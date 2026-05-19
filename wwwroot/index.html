@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ejecucion de Comandos - Datax SAFI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        p.description {
+            color: #666666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 4px;
+            padding: 12px 40px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn-danger {
+            background-color: #d32f2f;
+            color: #ffffff;
+        }
+
+        .btn-danger:hover {
+            background-color: #b71c1c;
+        }
+
+        .user-info {
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .user-info span {
+            font-weight: 600;
+        }
+
+        .execute-btn {
+            background-color: #0078d4;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            padding: 12px 40px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .execute-btn:hover {
+            background-color: #106ebe;
+        }
+
+        .execute-btn:disabled {
+            background-color: #c5c5c5;
+            cursor: not-allowed;
+        }
+
+        .result-section {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .result-section.visible {
+            display: block;
+        }
+
+        .result-label {
+            color: #666666;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .result-id {
+            color: #333333;
+            font-size: 18px;
+            font-weight: bold;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+        }
+
+        .status-message {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #0078d4;
+        }
+
+        .error-message {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #d32f2f;
+            min-height: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Ejecucion de Comandos</h1>
+
+        <!-- ==================== DASHBOARD VIEW ==================== -->
+        <div id="dashboardView">
+            <p class="user-info">Bienvenido, <span id="userName"></span></p>
+
+            <button id="executeBtn" class="execute-btn" onclick="executeCommand()">Ejecutar Comando</button>
+
+            <div id="resultSection" class="result-section">
+                <div class="result-label">ID de Ejecucion:</div>
+                <div id="resultId" class="result-id"></div>
+                <div id="statusMessage" class="status-message"></div>
+                <div id="errorMessage" class="error-message"></div>
+            </div>
+
+            <div style="margin-top: 30px;">
+                <button class="btn btn-danger" onclick="logoutAndRedirect()">Cerrar Sesión</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script>
+        // ========================
+        //  Execute Command (protected)
+        // ========================
+        async function executeCommand() {
+            const btn = document.getElementById("executeBtn");
+            const resultSection = document.getElementById("resultSection");
+            const resultId = document.getElementById("resultId");
+            const statusMessage = document.getElementById("statusMessage");
+            const errorMessage = document.getElementById("errorMessage");
+
+            btn.disabled = true;
+            btn.textContent = "Enviando...";
+            resultSection.classList.remove("visible");
+            statusMessage.textContent = "";
+            errorMessage.textContent = "";
+
+            const token = getAccessToken();
+            if (!token) {
+                errorMessage.textContent = "No hay token de sesión. Inicie sesión.";
+                resultSection.classList.add("visible");
+                btn.disabled = false;
+                btn.textContent = "Ejecutar Comando";
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/command/execute-async`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+
+                if (res.status === 401 || res.status === 403) {
+                    // Token may be expired – try one refresh attempt
+                    const refresh = getRefreshToken();
+                    let refreshed = false;
+                    if (refresh) {
+                        const refreshRes = await fetch(`${API_BASE}/api/auth/refresh`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ token: refresh })
+                        });
+                        if (refreshRes.ok) {
+                            const data = await refreshRes.json();
+                            storeTokens(data.accessToken, data.refreshToken, data.expiresIn);
+                            refreshed = true;
+                        }
+                    }
+
+                    if (!refreshed) {
+                        clearTokens();
+                        window.location.href = "login.html";
+                        throw new Error("Sesión expirada. Inicie sesión de nuevo.");
+                    }
+
+                    // Retry with new token
+                    const newToken = getAccessToken();
+                    const retryRes = await fetch(`${API_BASE}/api/command/execute-async`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${newToken}`
+                        }
+                    });
+
+                    if (!retryRes.ok) {
+                        throw new Error(`HTTP error! status: ${retryRes.status}`);
+                    }
+
+                    const data = await retryRes.json();
+                    resultId.textContent = data.id;
+                    statusMessage.textContent = "Comando encolado exitosamente. Procesando...";
+                    resultSection.classList.add("visible");
+                    scheduleAutoRefresh();
+                    return;
+                }
+
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+
+                const data = await res.json();
+                resultId.textContent = data.id;
+                statusMessage.textContent = "Comando encolado exitosamente. Procesando...";
+                resultSection.classList.add("visible");
+            } catch (error) {
+                if (error.message.includes("Sesión expirada")) {
+                    errorMessage.textContent = error.message;
+                } else {
+                    errorMessage.textContent = `Error: ${error.message}`;
+                }
+                resultSection.classList.add("visible");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Ejecutar Comando";
+            }
+        }
+
+        // ========================
+        //  On page load: check if authenticated
+        // ========================
+        (function init() {
+            const token = getAccessToken();
+            if (token && !isTokenExpired()) {
+                // Decode name from JWT
+                const payload = decodeJwtPayload(token);
+                const name = extractUserName(payload, "Usuario");
+                document.getElementById("userName").textContent = name;
+                scheduleAutoRefresh();
+            } else {
+                clearTokens();
+                window.location.href = "login.html";
+            }
+        })();
+    </script>
+</body>
+
+</html>

@@ -61,6 +61,24 @@
             background-color: #b71c1c;
         }
 
+        .logout-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            background-color: #d32f2f;
+            color: #ffffff;
+        }
+
+        .logout-btn:hover {
+            background-color: #b71c1c;
+        }
+
         .user-info {
             margin-bottom: 20px;
             font-size: 14px;
@@ -133,6 +151,8 @@
 </head>
 
 <body>
+    <button class="logout-btn" onclick="logoutAndRedirect()">Cerrar Sesión</button>
+
     <div class="container">
         <h1>Ejecucion de Comandos</h1>
 
@@ -149,9 +169,6 @@
                 <div id="errorMessage" class="error-message"></div>
             </div>
 
-            <div style="margin-top: 30px;">
-                <button class="btn btn-danger" onclick="logoutAndRedirect()">Cerrar Sesión</button>
-            </div>
         </div>
     </div>
 

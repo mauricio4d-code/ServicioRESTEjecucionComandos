@@ -193,6 +193,42 @@
             color: #721c24;
         }
 
+        /* Tooltip on status hover */
+        .status-badge.has-tooltip {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .status-tooltip {
+            position: fixed;
+            display: none;
+            min-width: 350px;
+            min-height: 350px;
+            max-width: 600px;
+            max-height: 600px;
+            background-color: #333;
+            color: #fff;
+            padding: 24px 32px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 400;
+            text-transform: none;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            word-wrap: break-word;
+            line-height: 1.5;
+            z-index: 10000;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+
+        .status-tooltip.visible {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
         /* Loading spinner */
         .loading {
             display: none;
@@ -409,7 +445,29 @@
                 const statusSpan = document.createElement("span");
                 statusSpan.id = `status-${row.codEnvio}`;
                 statusSpan.className = "status-badge";
-                statusSpan.textContent = "-";
+                // Text node for status label
+                const statusText = document.createElement("span");
+                statusText.id = `statusText-${row.codEnvio}`;
+                statusText.className = "status-text";
+                statusText.textContent = "-";
+                statusSpan.appendChild(statusText);
+                // Tooltip container (hidden by default)
+                const tooltipEl = document.createElement("div");
+                tooltipEl.className = "status-tooltip";
+                tooltipEl.id = `tooltip-${row.codEnvio}`;
+                statusSpan.appendChild(tooltipEl);
+
+                // Hover events for tooltip positioning
+                statusSpan.addEventListener("mouseenter", function () {
+                    if (this.classList.contains("has-tooltip")) {
+                        positionTooltip(tooltipEl, this);
+                        tooltipEl.classList.add("visible");
+                    }
+                });
+                statusSpan.addEventListener("mouseleave", function () {
+                    tooltipEl.classList.remove("visible");
+                });
+
                 statusCell.appendChild(statusSpan);
                 tr.appendChild(statusCell);
 
@@ -494,7 +552,16 @@
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
                     const item = await res.json();
-                    updateStatusBadge(codEnvio, item.status);
+
+                    // Determine tooltip content for terminal states
+                    let tooltipContent = "";
+                    if (item.status === "SUCCESS" && item.output) {
+                        tooltipContent = item.output;
+                    } else if (item.status === "FAILED" && item.error) {
+                        tooltipContent = item.error;
+                    }
+
+                    updateStatusBadge(codEnvio, item.status, tooltipContent);
 
                     // Stop polling when terminal status reached
                     if (item.status === "SUCCESS" || item.status === "FAILED") {
@@ -517,13 +584,31 @@
         }
 
         // ========================
+        //  Position tooltip above the badge using fixed positioning
+        // ========================
+        function positionTooltip(tooltipEl, badgeEl) {
+            const rect = badgeEl.getBoundingClientRect();
+            // Temporarily add visible class to measure actual dimensions
+            tooltipEl.classList.add("visible");
+            const tooltipHeight = tooltipEl.offsetHeight;
+            const tooltipWidth = tooltipEl.offsetWidth;
+            tooltipEl.style.top = (rect.top - tooltipHeight - 10) + "px";
+            tooltipEl.style.left = (rect.left + rect.width / 2 - tooltipWidth / 2) + "px";
+        }
+
+        // ========================
         //  Update status badge in table
         // ========================
-        function updateStatusBadge(codEnvio, status) {
+        function updateStatusBadge(codEnvio, status, tooltipContent) {
             const statusEl = document.getElementById(`status-${codEnvio}`);
             if (!statusEl) return;
 
-            statusEl.textContent = status;
+            // Update only the status text, preserving the tooltip child
+            const statusTextEl = document.getElementById(`statusText-${codEnvio}`);
+            if (statusTextEl) {
+                statusTextEl.textContent = status;
+            }
+
             statusEl.className = "status-badge";
 
             switch (status) {
@@ -541,6 +626,16 @@
                     break;
                 default:
                     statusEl.classList.add("status-pending");
+            }
+
+            // Set or clear tooltip content
+            const tooltipEl = document.getElementById(`tooltip-${codEnvio}`);
+            if (tooltipEl && tooltipContent) {
+                tooltipEl.textContent = tooltipContent;
+                statusEl.classList.add("has-tooltip");
+            } else if (tooltipEl) {
+                tooltipEl.textContent = "";
+                statusEl.classList.remove("has-tooltip");
             }
         }
 

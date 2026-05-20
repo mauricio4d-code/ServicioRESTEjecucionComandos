@@ -47,18 +47,20 @@ public class QueuedExecutionService : BackgroundService
         {
             try
             {
-                if (_queue.TryDequeue(out var item) && item != null)
+                // Only dequeue when an execution slot is available,
+                // so that at most MaxParallelExecutions items are ever in RUNNING state.
+                if (_semaphore.CurrentCount > 0 && _queue.TryDequeue(out var item) && item != null)
                 {
-                    _logger.LogInformation("Dequeued item {ItemId} (ServiceItem {ServiceItemId}). Attempting to acquire execution slot.", item.Id, item.ServiceItemId);
+                    _logger.LogInformation("Dequeued item {ItemId} (ServiceItem {ServiceItemId}). Acquiring execution slot.", item.Id, item.ServiceItemId);
 
-                    // Update ServiceItem status to RUNNING
+                    // Acquire semaphore slot before marking as RUNNING
+                    await _semaphore.WaitAsync(stoppingToken);
+
+                    // Update ServiceItem status to RUNNING only after slot is acquired
                     await UpdateStatusInScopeAsync(
                         item.ServiceItemId,
                         "RUNNING",
                         executedAt: DateTime.UtcNow);
-
-                    // Acquire semaphore slot - limits parallel executions
-                    await _semaphore.WaitAsync(stoppingToken);
 
                     _logger.LogInformation("Acquired execution slot for item {ItemId}. Starting ProcessItemAsync.", item.Id);
 
@@ -79,8 +81,8 @@ public class QueuedExecutionService : BackgroundService
                 }
                 else
                 {
-                    // Queue is empty - wait for configured duration before checking again
-                    _logger.LogDebug("Queue empty. Waiting {WaitSeconds}s before next check.", _waitSeconds);
+                    // Queue is empty or no execution slots available - wait before checking again
+                    _logger.LogDebug("Queue empty or all slots busy. Waiting {WaitSeconds}s before next check.", _waitSeconds);
                     await Task.Delay(TimeSpan.FromSeconds(_waitSeconds), stoppingToken);
                 }
             }

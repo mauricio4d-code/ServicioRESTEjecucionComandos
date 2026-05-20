@@ -76,3 +76,7 @@ yarn-error.log*
 # Coverage reports
 coverage/
 *.coverage
+
+# roo
+.roo/
+**/AGENTS.md

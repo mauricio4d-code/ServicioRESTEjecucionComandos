@@ -1,20 +1,15 @@
 using System.Diagnostics;
-using System.Text.Json;
 using ServicioRESTEjecucionComandos.Models;
 
 namespace ServicioRESTEjecucionComandos.Services;
 
 /// <summary>
 /// Executes the Datax.SAFI.Downloader console application and captures the result.
+/// Results are no longer written to disk; they are returned for database persistence.
 /// </summary>
 public class CommandExecutor
 {
     private readonly string _exePath;
-    private readonly string _code;
-    private readonly string _start;
-    private readonly string _end;
-    private readonly string _codesend;
-    private readonly string _resultPath;
     private readonly ILogger<CommandExecutor> _logger;
 
     /// <summary>
@@ -22,42 +17,42 @@ public class CommandExecutor
     /// </summary>
     public CommandExecutor(
         string exePath,
-        string code,
-        string start,
-        string end,
-        string codesend,
-        string resultPath,
         ILogger<CommandExecutor> logger)
     {
         _exePath = exePath;
-        _code = code;
-        _start = start;
-        _end = end;
-        _codesend = codesend;
-        _resultPath = resultPath;
         _logger = logger;
     }
 
     /// <summary>
-    /// Executes the console application with the configured parameters and writes the result to a JSON file.
+    /// Execution result returned after running the command.
     /// </summary>
-    /// <param name="item">The queue item containing execution context.</param>
-    /// <returns>True if execution succeeded; otherwise, false.</returns>
-    public async Task<bool> ExecuteAsync(ExecutionQueueItem item)
+    public class ExecutionResult
+    {
+        public bool Success { get; set; }
+        public int ExitCode { get; set; }
+        public string Output { get; set; } = string.Empty;
+        public string Error { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Executes the console application with parameters from the queue item and returns the result.
+    /// </summary>
+    /// <param name="item">The queue item containing execution context and dynamic parameters.</param>
+    /// <returns>ExecutionResult with exit code, output, and error information.</returns>
+    public async Task<ExecutionResult> ExecuteAsync(ExecutionQueueItem item)
     {
         var itemId = item.Id;
-        var resultFileName = $"ETLResult_{itemId}.json";
-        var resultFilePath = Path.Combine(_resultPath, resultFileName);
+        var serviceItemId = item.ServiceItemId;
 
-        _logger.LogInformation("Executing command for item {ItemId}: {ExePath} -code {Code} -start {Start} -end {End} -codesend {Codesend}",
-            itemId, _exePath, _code, _start, _end, _codesend);
+        _logger.LogInformation("Executing command for item {ItemId} (ServiceItem {ServiceItemId}): {ExePath} -code {Code} -start {Start} -end {End} -codesend {Codesend}",
+            itemId, serviceItemId, _exePath, item.Code, item.Start, item.End, item.Codesend);
 
         try
         {
             var startInfo = new ProcessStartInfo
             {
                 FileName = _exePath,
-                Arguments = $"-code {_code} -start {_start} -end {_end} -codesend {_codesend}",
+                Arguments = $"-code {item.Code} -start {item.Start} -end {item.End} -codesend {item.Codesend}",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -78,65 +73,28 @@ public class CommandExecutor
             var error = await errorTask;
             var exitCode = process.ExitCode;
 
-            var result = new
+            _logger.LogInformation("Command execution completed for item {ItemId}. ExitCode: {ExitCode}",
+                itemId, exitCode);
+
+            return new ExecutionResult
             {
-                ItemId = itemId,
-                Status = exitCode == 0 ? "Success" : "Failed",
+                Success = exitCode == 0,
                 ExitCode = exitCode,
                 Output = output,
-                Error = error,
-                ExecutedAt = DateTime.UtcNow,
-                CompletedAt = DateTime.UtcNow
+                Error = error
             };
-
-            // Ensure the output directory exists
-            Directory.CreateDirectory(_resultPath);
-
-            // Write result to JSON file
-            var jsonOptions = new JsonSerializerOptions
-            {
-                WriteIndented = true
-            };
-            var jsonContent = JsonSerializer.Serialize(result, jsonOptions);
-            await File.WriteAllTextAsync(resultFilePath, jsonContent);
-
-            // Update the item with results
-            item.Status = exitCode == 0 ? "Completed" : "Failed";
-            item.Result = exitCode == 0 ? output : error;
-            item.CompletedAt = DateTime.UtcNow;
-
-            _logger.LogInformation("Command execution completed for item {ItemId}. ExitCode: {ExitCode}. Result written to {ResultPath}",
-                itemId, exitCode, resultFilePath);
-
-            return exitCode == 0;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error executing command for item {ItemId}", itemId);
 
-            var errorResult = new
+            return new ExecutionResult
             {
-                ItemId = itemId,
-                Status = "Error",
-                ErrorMessage = ex.Message,
-                ExecutedAt = DateTime.UtcNow,
-                CompletedAt = DateTime.UtcNow
+                Success = false,
+                ExitCode = -1,
+                Output = string.Empty,
+                Error = ex.Message
             };
-
-            Directory.CreateDirectory(_resultPath);
-
-            var jsonOptions = new JsonSerializerOptions
-            {
-                WriteIndented = true
-            };
-            var jsonContent = JsonSerializer.Serialize(errorResult, jsonOptions);
-            await File.WriteAllTextAsync(resultFilePath, jsonContent);
-
-            item.Status = "Error";
-            item.Result = ex.Message;
-            item.CompletedAt = DateTime.UtcNow;
-
-            return false;
         }
     }
 }

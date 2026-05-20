@@ -1,15 +1,18 @@
+using Microsoft.Extensions.DependencyInjection;
 using ServicioRESTEjecucionComandos.Models;
+using ServicioRESTEjecucionComandos.Repositories;
 
 namespace ServicioRESTEjecucionComandos.Services;
 
 /// <summary>
 /// Background service that continuously dequeues and processes ExecutionQueueItem instances
-/// with configurable parallel execution limits.
+/// with configurable parallel execution limits, updating ServiceItem status in the database.
 /// </summary>
 public class QueuedExecutionService : BackgroundService
 {
     private readonly ExecutionQueue _queue;
     private readonly CommandExecutor _executor;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly int _waitSeconds;
     private readonly ILogger<QueuedExecutionService> _logger;
     private readonly SemaphoreSlim _semaphore;
@@ -20,12 +23,14 @@ public class QueuedExecutionService : BackgroundService
     public QueuedExecutionService(
         ExecutionQueue queue,
         CommandExecutor executor,
+        IServiceScopeFactory scopeFactory,
         int waitSeconds,
         int maxParallelExecutions,
         ILogger<QueuedExecutionService> logger)
     {
         _queue = queue;
         _executor = executor;
+        _scopeFactory = scopeFactory;
         _waitSeconds = waitSeconds;
         _logger = logger;
         _semaphore = new SemaphoreSlim(maxParallelExecutions, maxParallelExecutions);
@@ -44,7 +49,13 @@ public class QueuedExecutionService : BackgroundService
             {
                 if (_queue.TryDequeue(out var item) && item != null)
                 {
-                    _logger.LogInformation("Dequeued item {ItemId}. Attempting to acquire execution slot.", item.Id);
+                    _logger.LogInformation("Dequeued item {ItemId} (ServiceItem {ServiceItemId}). Attempting to acquire execution slot.", item.Id, item.ServiceItemId);
+
+                    // Update ServiceItem status to RUNNING
+                    await UpdateStatusInScopeAsync(
+                        item.ServiceItemId,
+                        "RUNNING",
+                        executedAt: DateTime.UtcNow);
 
                     // Acquire semaphore slot - limits parallel executions
                     await _semaphore.WaitAsync(stoppingToken);
@@ -89,37 +100,87 @@ public class QueuedExecutionService : BackgroundService
     }
 
     /// <summary>
-    /// Processes a single queue item by executing the command through CommandExecutor.
+    /// Processes a single queue item by executing the command through CommandExecutor
+    /// and updating the ServiceItem record with final status.
     /// </summary>
     /// <param name="item">The queue item to process.</param>
     /// <returns>True if processing succeeded; otherwise, false.</returns>
     public async Task<bool> ProcessItemAsync(ExecutionQueueItem item)
     {
-        _logger.LogInformation("Processing item {ItemId}. Setting status to Running.", item.Id);
-        item.Status = "Running";
+        _logger.LogInformation("Processing item {ItemId}. ServiceItem status is RUNNING.", item.Id);
 
         try
         {
-            var success = await _executor.ExecuteAsync(item);
+            var result = await _executor.ExecuteAsync(item);
 
-            if (success)
+            var completedAt = DateTime.UtcNow;
+            var status = result.Success ? "SUCCESS" : "FAILED";
+
+            // Update ServiceItem with final status and execution details
+            await UpdateStatusInScopeAsync(
+                item.ServiceItemId,
+                status,
+                exitCode: result.ExitCode,
+                output: result.Output,
+                error: result.Error,
+                completedAt: completedAt);
+
+            if (result.Success)
             {
-                _logger.LogInformation("Item {ItemId} processed successfully.", item.Id);
+                _logger.LogInformation("Item {ItemId} processed successfully. ServiceItem status set to SUCCESS.", item.Id);
             }
             else
             {
-                _logger.LogWarning("Item {ItemId} processing failed. Status: {Status}", item.Id, item.Status);
+                _logger.LogWarning("Item {ItemId} processing failed with exit code {ExitCode}. ServiceItem status set to FAILED.", item.Id, result.ExitCode);
             }
 
-            return success;
+            // Update the in-memory item status as well
+            item.Status = status;
+            item.Result = result.Success ? result.Output : result.Error;
+            item.CompletedAt = completedAt;
+
+            return result.Success;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception while processing item {ItemId}", item.Id);
-            item.Status = "Error";
+
+            // Mark as FAILED in database on unexpected exception
+            await UpdateStatusInScopeAsync(
+                item.ServiceItemId,
+                "FAILED",
+                error: ex.Message,
+                completedAt: DateTime.UtcNow);
+
+            item.Status = "FAILED";
             item.Result = ex.Message;
             item.CompletedAt = DateTime.UtcNow;
             return false;
         }
+    }
+
+    /// <summary>
+    /// Creates a scoped service provider and calls UpdateStatusAsync on ServiceItemRepository,
+    /// ensuring the scoped DbContext is properly disposed after each call.
+    /// </summary>
+    private async Task UpdateStatusInScopeAsync(
+        Guid serviceItemId,
+        string status,
+        int? exitCode = null,
+        string? output = null,
+        string? error = null,
+        DateTime? executedAt = null,
+        DateTime? completedAt = null)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ServiceItemRepository>();
+        await repo.UpdateStatusAsync(
+            serviceItemId,
+            status,
+            exitCode: exitCode,
+            output: output,
+            error: error,
+            executedAt: executedAt,
+            completedAt: completedAt);
     }
 }

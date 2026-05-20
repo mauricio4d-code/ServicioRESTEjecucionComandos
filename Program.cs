@@ -12,8 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Read configuration values
 var dataxConfig = builder.Configuration.GetSection("DataxConfig");
 var queueConfig = builder.Configuration.GetSection("QueueConfig");
-var resultConfig = builder.Configuration.GetSection("ResultConfig");
 var authenticationConfig = builder.Configuration.GetSection("Authentication");
+var serviceDbConfig = builder.Configuration.GetSection("ServiceDb");
 
 var exePath = dataxConfig.GetValue<string>("ExePath") ?? string.Empty;
 var code = dataxConfig.GetValue<string>("Code") ?? string.Empty;
@@ -24,9 +24,8 @@ var codesend = dataxConfig.GetValue<string>("Codesend") ?? string.Empty;
 var waitSeconds = queueConfig.GetValue<int>("WaitSeconds");
 var maxParallelExecutions = queueConfig.GetValue<int>("MaxParallelExecutions");
 
-var outputPath = resultConfig.GetValue<string>("OutputPath") ?? "D:\\";
-
 var authenticationProvider = authenticationConfig.GetValue<string>("Provider") ?? string.Empty;
+var serviceDbProvider = serviceDbConfig.GetValue<string>("Provider") ?? "postgres";
 
 // -----------------------------------------------------------------------
 // EF Core DbContext registrations
@@ -41,6 +40,7 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
     switch (authenticationProvider.ToLower())
     {
         case "postgres":
+        case "postgresql":
             options.UseNpgsql(authConnectionString);
             break;
         case "sqlserver":
@@ -62,11 +62,33 @@ builder.Services.AddDbContext<RefreshTokenDbContext>(options =>
     options.UseSqlite(rtConnectionString);
 });
 
+// Service database (PostgreSQL / SQLServer - configurable via ServiceDb:Provider)
+builder.Services.AddDbContext<ServiceDbContext>(options =>
+{
+    var serviceConnectionString = builder.Configuration.GetConnectionString("ServiceDatabase")
+        ?? throw new InvalidOperationException("Connection string 'ServiceDatabase' is not configured.");
+
+    switch (serviceDbProvider.ToLower())
+    {
+        case "postgres":
+        case "postgresql":
+            options.UseNpgsql(serviceConnectionString);
+            break;
+        case "sqlserver":
+            options.UseSqlServer(serviceConnectionString);
+            break;
+        default:
+            options.UseNpgsql(serviceConnectionString);
+            break;
+    }
+});
+
 // -----------------------------------------------------------------------
 // Repository registrations
 // -----------------------------------------------------------------------
 builder.Services.AddScoped<RefreshTokenRepository>();
 builder.Services.AddScoped<AuthAuditLogRepository>();
+builder.Services.AddScoped<ServiceItemRepository>();
 
 // -----------------------------------------------------------------------
 // Service registrations
@@ -87,11 +109,11 @@ builder.Services.AddControllers();
 // Register ExecutionQueue as singleton (shared across the app)
 builder.Services.AddSingleton<ExecutionQueue>();
 
-// Register CommandExecutor as singleton with configured parameters
+// Register CommandExecutor as singleton (parameters are now per-item, not static)
 builder.Services.AddSingleton<CommandExecutor>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<CommandExecutor>>();
-    return new CommandExecutor(exePath, code, start, end, codesend, outputPath, logger);
+    return new CommandExecutor(exePath, logger);
 });
 
 // Register QueuedExecutionService as hosted service (background service)
@@ -99,8 +121,9 @@ builder.Services.AddHostedService(sp =>
 {
     var queue = sp.GetRequiredService<ExecutionQueue>();
     var executor = sp.GetRequiredService<CommandExecutor>();
+    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
     var logger = sp.GetRequiredService<ILogger<QueuedExecutionService>>();
-    return new QueuedExecutionService(queue, executor, waitSeconds, maxParallelExecutions, logger);
+    return new QueuedExecutionService(queue, executor, scopeFactory, waitSeconds, maxParallelExecutions, logger);
 });
 
 // Register RefreshTokenCleanupService as hosted service (background cleanup)
@@ -153,7 +176,7 @@ builder.Services.AddAuthorization();
 var app = builder.Build();
 
 // -----------------------------------------------------------------------
-// Ensure SQLite database is created and migrations are applied on startup
+// Ensure databases are created on startup
 // -----------------------------------------------------------------------
 using (var scope = app.Services.CreateScope())
 {
@@ -169,6 +192,61 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         logger.LogError(ex, "An error occurred creating the RefreshToken SQLite database.");
+    }
+
+    try
+    {
+        var serviceDbContext = services.GetRequiredService<ServiceDbContext>();
+
+        string createTableSql;
+        string createIndexSql;
+
+        if (serviceDbProvider.ToLower() == "sqlserver")
+        {
+            // SQL Server syntax
+            createTableSql = @"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ServiceItem')
+                BEGIN
+                    CREATE TABLE [ServiceItem] (
+                        [ItemId] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                        [Status] NVARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                        [ExitCode] INT,
+                        [Output] NVARCHAR(MAX),
+                        [Error] NVARCHAR(MAX),
+                        [ExecutedAt] DATETIME2,
+                        [CompletedAt] DATETIME2
+                    );
+                END";
+            createIndexSql = @"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ServiceItem_Status')
+                    CREATE INDEX [IX_ServiceItem_Status] ON [ServiceItem] ([Status]);";
+        }
+        else
+        {
+            // PostgreSQL syntax (default)
+            serviceDbContext.Database.ExecuteSqlRaw(@"CREATE EXTENSION IF NOT EXISTS pgcrypto;");
+            
+            createTableSql = @"
+                CREATE TABLE IF NOT EXISTS ""ServiceItem"" (
+                    ""ItemId"" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    ""Status"" VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                    ""ExitCode"" INTEGER,
+                    ""Output"" TEXT,
+                    ""Error"" TEXT,
+                    ""ExecutedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CompletedAt"" TIMESTAMP WITH TIME ZONE
+                )";
+            createIndexSql = @"
+                CREATE INDEX IF NOT EXISTS ""IX_ServiceItem_Status"" ON ""ServiceItem"" (""Status"")";
+        }
+
+        serviceDbContext.Database.ExecuteSqlRaw(createTableSql);
+        serviceDbContext.Database.ExecuteSqlRaw(createIndexSql);
+        logger.LogInformation("Service database schema ensured via raw SQL (ServiceItem table created if not exists).");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "An error occurred creating the Service database schema.");
     }
 }
 

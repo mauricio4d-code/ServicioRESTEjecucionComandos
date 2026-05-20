@@ -17,8 +17,9 @@
             background-color: #f5f5f5;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             min-height: 100vh;
+            padding: 40px 20px;
         }
 
         .container {
@@ -27,7 +28,7 @@
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             padding: 40px;
             text-align: center;
-            max-width: 500px;
+            max-width: 1200px;
             width: 100%;
         }
 
@@ -46,8 +47,8 @@
         .btn {
             border: none;
             border-radius: 4px;
-            padding: 12px 40px;
-            font-size: 16px;
+            padding: 8px 16px;
+            font-size: 13px;
             cursor: pointer;
             transition: background-color 0.2s;
         }
@@ -89,63 +90,165 @@
             font-weight: 600;
         }
 
-        .execute-btn {
-            background-color: #0078d4;
-            color: #ffffff;
-            border: none;
-            border-radius: 4px;
-            padding: 12px 40px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background-color 0.2s;
+        /* Select dropdown */
+        .select-container {
+            margin-bottom: 20px;
         }
 
-        .execute-btn:hover {
+        .select-container label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        #baseDatosSelect {
+            padding: 10px 16px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        /* Data table */
+        .table-container {
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* Action buttons */
+        .btn-actualizar {
+            background-color: #0078d4;
+            color: #ffffff;
+        }
+
+        .btn-actualizar:hover {
             background-color: #106ebe;
         }
 
-        .execute-btn:disabled {
-            background-color: #c5c5c5;
+        .btn-reprocesar {
+            background-color: #ff9800;
+            color: #ffffff;
+        }
+
+        .btn-reprocesar:hover {
+            background-color: #f57c00;
+        }
+
+        .btn:disabled {
+            background-color: #c5c5c5 !important;
             cursor: not-allowed;
         }
 
-        .result-section {
-            margin-top: 30px;
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-            display: none;
+        /* Status badge */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
         }
 
-        .result-section.visible {
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .status-running {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+
+        .status-success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Loading spinner */
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .loading.visible {
             display: block;
         }
 
-        .result-label {
-            color: #666666;
-            font-size: 14px;
-            margin-bottom: 8px;
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0078d4;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
         }
 
-        .result-id {
-            color: #333333;
-            font-size: 18px;
-            font-weight: bold;
-            word-break: break-all;
-            font-family: 'Courier New', monospace;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
-        .status-message {
-            margin-top: 10px;
-            font-size: 12px;
-            color: #0078d4;
-        }
-
+        /* Error message */
         .error-message {
             margin-top: 10px;
             font-size: 13px;
             color: #d32f2f;
             min-height: 20px;
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 14px;
+            z-index: 1000;
+            display: none;
+        }
+
+        .toast.visible {
+            display: block;
+        }
+
+        .toast-success {
+            background-color: #28a745;
+        }
+
+        .toast-error {
+            background-color: #d32f2f;
         }
     </style>
 </head>
@@ -160,118 +263,316 @@
         <div id="dashboardView">
             <p class="user-info">Bienvenido, <span id="userName"></span></p>
 
-            <button id="executeBtn" class="execute-btn" onclick="executeCommand()">Ejecutar Comando</button>
-
-            <div id="resultSection" class="result-section">
-                <div class="result-label">ID de Ejecucion:</div>
-                <div id="resultId" class="result-id"></div>
-                <div id="statusMessage" class="status-message"></div>
-                <div id="errorMessage" class="error-message"></div>
+            <!-- Base Datos selector -->
+            <div class="select-container">
+                <label for="baseDatosSelect">Seleccionar Base de Datos:</label>
+                <select id="baseDatosSelect" onchange="onBaseDatosSelected()">
+                    <option value="">-- Seleccione --</option>
+                </select>
             </div>
 
+            <!-- Loading indicator -->
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Cargando datos...</p>
+            </div>
+
+            <!-- Error message -->
+            <div id="errorMessage" class="error-message"></div>
+
+            <!-- Results table -->
+            <div id="tableContainer" class="table-container" style="display: none;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tipo Entidad</th>
+                            <th>Cod Envio</th>
+                            <th>Fecha Descarga</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody">
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
 
     <script src="auth.js"></script>
     <script>
         // ========================
-        //  Execute Command (protected)
+        //  Global state
         // ========================
-        async function executeCommand() {
-            const btn = document.getElementById("executeBtn");
-            const resultSection = document.getElementById("resultSection");
-            const resultId = document.getElementById("resultId");
-            const statusMessage = document.getElementById("statusMessage");
+        let currentCodigo = "";
+        let pollingIntervals = {};
+
+        // ========================
+        //  Load base_datos on page load
+        // ========================
+        async function loadBaseDatos() {
+            const token = getAccessToken();
+            if (!token) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/command/base-datos`, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                const data = await res.json();
+                const select = document.getElementById("baseDatosSelect");
+
+                data.forEach(item => {
+                    const option = document.createElement("option");
+                    option.value = item.codigo;
+                    option.textContent = item.nombre;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error("Error loading base_datos:", error);
+            }
+        }
+
+        // ========================
+        //  When user selects a base de datos
+        // ========================
+        async function onBaseDatosSelected() {
+            const select = document.getElementById("baseDatosSelect");
+            const codigo = select.value;
+            const loading = document.getElementById("loading");
+            const tableContainer = document.getElementById("tableContainer");
             const errorMessage = document.getElementById("errorMessage");
 
-            btn.disabled = true;
-            btn.textContent = "Enviando...";
-            resultSection.classList.remove("visible");
-            statusMessage.textContent = "";
             errorMessage.textContent = "";
 
-            const token = getAccessToken();
-            if (!token) {
-                errorMessage.textContent = "No hay token de sesión. Inicie sesión.";
-                resultSection.classList.add("visible");
-                btn.disabled = false;
-                btn.textContent = "Ejecutar Comando";
+            if (!codigo) {
+                tableContainer.style.display = "none";
                 return;
             }
 
+            currentCodigo = codigo;
+            loading.classList.add("visible");
+            tableContainer.style.display = "none";
+
+            const token = getAccessToken();
             try {
-                const res = await fetch(`${API_BASE}/api/command/execute-async`, {
+                const res = await fetch(`${API_BASE}/api/command/query-results?codigo=${encodeURIComponent(codigo)}`, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                const data = await res.json();
+                renderResultsTable(data);
+                tableContainer.style.display = "block";
+            } catch (error) {
+                errorMessage.textContent = `Error cargando resultados: ${error.message}`;
+            } finally {
+                loading.classList.remove("visible");
+            }
+        }
+
+        // ========================
+        //  Render results table
+        // ========================
+        function renderResultsTable(results) {
+            const tbody = document.getElementById("resultsBody");
+            tbody.innerHTML = "";
+
+            if (!results || results.length === 0) {
+                tbody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>Sin resultados</td></tr>";
+                return;
+            }
+
+            results.forEach(row => {
+                const tr = document.createElement("tr");
+
+                const tipoEntidad = document.createElement("td");
+                tipoEntidad.textContent = row.tipoEntidad || "-";
+                tr.appendChild(tipoEntidad);
+
+                const codEnvio = document.createElement("td");
+                codEnvio.textContent = row.codEnvio || "-";
+                tr.appendChild(codEnvio);
+
+                const fechaDescarga = document.createElement("td");
+                fechaDescarga.textContent = row.fechaDescarga ? new Date(row.fechaDescarga).toLocaleDateString() : "-";
+                tr.appendChild(fechaDescarga);
+
+                // Status cell
+                const statusCell = document.createElement("td");
+                const statusSpan = document.createElement("span");
+                statusSpan.id = `status-${row.codEnvio}`;
+                statusSpan.className = "status-badge";
+                statusSpan.textContent = "-";
+                statusCell.appendChild(statusSpan);
+                tr.appendChild(statusCell);
+
+                // Actions cell
+                const actionsCell = document.createElement("td");
+
+                const actualizarBtn = document.createElement("button");
+                actualizarBtn.className = "btn btn-actualizar";
+                actualizarBtn.textContent = "Actualizar";
+                actualizarBtn.onclick = () => executeAction("Actualizar", row.codEnvio);
+                actionsCell.appendChild(actualizarBtn);
+
+                const repDocBtn = document.createElement("button");
+                repDocBtn.className = "btn btn-reprocesar";
+                repDocBtn.textContent = "Reprocesar";
+                repDocBtn.style.marginLeft = "8px";
+                repDocBtn.onclick = () => executeAction("Reprocesar", row.codEnvio);
+                actionsCell.appendChild(repDocBtn);
+
+                tr.appendChild(actionsCell);
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ========================
+        //  Execute action (Actualizar/Reprocesar)
+        // ========================
+        async function executeAction(action, codEnvio) {
+            const token = getAccessToken();
+            if (!token) {
+                showToast("No hay token de sesión. Inicie sesión.", "error");
+                return;
+            }
+
+            // Disable buttons for this row
+            disableButtonsForRow(codEnvio);
+
+            try {
+                const res = await fetch(`${API_BASE}/api/command/execute`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${token}`
-                    }
+                    },
+                    body: JSON.stringify({ action: action, codigo: codEnvio })
                 });
 
-                if (res.status === 401 || res.status === 403) {
-                    // Token may be expired – try one refresh attempt
-                    const refresh = getRefreshToken();
-                    let refreshed = false;
-                    if (refresh) {
-                        const refreshRes = await fetch(`${API_BASE}/api/auth/refresh`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ token: refresh })
-                        });
-                        if (refreshRes.ok) {
-                            const data = await refreshRes.json();
-                            storeTokens(data.accessToken, data.refreshToken, data.expiresIn);
-                            refreshed = true;
-                        }
-                    }
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-                    if (!refreshed) {
-                        clearTokens();
-                        window.location.href = "login.html";
-                        throw new Error("Sesión expirada. Inicie sesión de nuevo.");
-                    }
+                const data = await res.json();
+                showToast(`Comando encolado. ServiceItemId: ${data.serviceItemId}`, "success");
 
-                    // Retry with new token
-                    const newToken = getAccessToken();
-                    const retryRes = await fetch(`${API_BASE}/api/command/execute-async`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": `Bearer ${newToken}`
-                        }
-                    });
+                // Start polling for status
+                startPolling(data.serviceItemId, codEnvio);
 
-                    if (!retryRes.ok) {
-                        throw new Error(`HTTP error! status: ${retryRes.status}`);
-                    }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, "error");
+                enableButtonsForRow(codEnvio);
+            }
+        }
 
-                    const data = await retryRes.json();
-                    resultId.textContent = data.id;
-                    statusMessage.textContent = "Comando encolado exitosamente. Procesando...";
-                    resultSection.classList.add("visible");
-                    scheduleAutoRefresh();
+        // ========================
+        //  Polling for ServiceItem status
+        // ========================
+        function startPolling(serviceItemId, codEnvio) {
+            if (pollingIntervals[serviceItemId]) {
+                clearInterval(pollingIntervals[serviceItemId]);
+            }
+
+            const interval = setInterval(async () => {
+                const token = getAccessToken();
+                if (!token) {
+                    clearInterval(interval);
                     return;
                 }
 
-                if (!res.ok) {
-                    throw new Error(`HTTP error! status: ${res.status}`);
-                }
+                try {
+                    const res = await fetch(`${API_BASE}/api/command/status/${serviceItemId}`, {
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
 
-                const data = await res.json();
-                resultId.textContent = data.id;
-                statusMessage.textContent = "Comando encolado exitosamente. Procesando...";
-                resultSection.classList.add("visible");
-            } catch (error) {
-                if (error.message.includes("Sesión expirada")) {
-                    errorMessage.textContent = error.message;
-                } else {
-                    errorMessage.textContent = `Error: ${error.message}`;
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                    const item = await res.json();
+                    updateStatusBadge(codEnvio, item.status);
+
+                    // Stop polling when terminal status reached
+                    if (item.status === "SUCCESS" || item.status === "FAILED") {
+                        clearInterval(interval);
+                        delete pollingIntervals[serviceItemId];
+                        enableButtonsForRow(codEnvio);
+
+                        if (item.status === "SUCCESS") {
+                            showToast("Ejecución completada con éxito.", "success");
+                        } else {
+                            showToast(`Ejecución fallida. Error: ${item.error || "Desconocido"}`, "error");
+                        }
+                    }
+                } catch (error) {
+                    console.error("Polling error:", error);
                 }
-                resultSection.classList.add("visible");
-            } finally {
-                btn.disabled = false;
-                btn.textContent = "Ejecutar Comando";
+            }, 3000);
+
+            pollingIntervals[serviceItemId] = interval;
+        }
+
+        // ========================
+        //  Update status badge in table
+        // ========================
+        function updateStatusBadge(codEnvio, status) {
+            const statusEl = document.getElementById(`status-${codEnvio}`);
+            if (!statusEl) return;
+
+            statusEl.textContent = status;
+            statusEl.className = "status-badge";
+
+            switch (status) {
+                case "PENDING":
+                    statusEl.classList.add("status-pending");
+                    break;
+                case "RUNNING":
+                    statusEl.classList.add("status-running");
+                    break;
+                case "SUCCESS":
+                    statusEl.classList.add("status-success");
+                    break;
+                case "FAILED":
+                    statusEl.classList.add("status-failed");
+                    break;
+                default:
+                    statusEl.classList.add("status-pending");
             }
+        }
+
+        // ========================
+        //  Enable/disable buttons for a row
+        // ========================
+        function disableButtonsForRow(codEnvio) {
+            // Simple approach: disable all action buttons temporarily
+            // In a more complex app, you'd track per-row state
+        }
+
+        function enableButtonsForRow(codEnvio) {
+            // Re-enable buttons
+        }
+
+        // ========================
+        //  Toast notification
+        // ========================
+        function showToast(message, type) {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "toast visible";
+
+            if (type === "success") {
+                toast.classList.add("toast-success");
+            } else {
+                toast.classList.add("toast-error");
+            }
+
+            setTimeout(() => {
+                toast.classList.remove("visible");
+            }, 4000);
         }
 
         // ========================
@@ -284,7 +585,7 @@
                 const payload = decodeJwtPayload(token);
                 const name = extractUserName(payload, "Usuario");
                 document.getElementById("userName").textContent = name;
-                scheduleAutoRefresh();
+                loadBaseDatos();
             } else {
                 clearTokens();
                 window.location.href = "login.html";

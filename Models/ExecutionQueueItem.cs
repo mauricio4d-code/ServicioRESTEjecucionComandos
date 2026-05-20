@@ -1,7 +1,7 @@
 namespace ServicioRESTEjecucionComandos.Models;
 
 /// <summary>
-/// Represents an item in the execution queue.
+/// Represents an item in the execution queue, linked to a ServiceItem record.
 /// </summary>
 public class ExecutionQueueItem
 {
@@ -9,6 +9,11 @@ public class ExecutionQueueItem
     /// Unique identifier for this queue item.
     /// </summary>
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// The ItemId of the associated ServiceItem record in the database.
+    /// </summary>
+    public Guid ServiceItemId { get; set; }
 
     /// <summary>
     /// The code parameter for the Datax command.
@@ -26,7 +31,7 @@ public class ExecutionQueueItem
     public string End { get; set; } = string.Empty;
 
     /// <summary>
-    /// The codesend parameter for the Datax command.
+    /// The codesend parameter for the Datax command (dynamic per-request).
     /// </summary>
     public string Codesend { get; set; } = string.Empty;
 

@@ -2,7 +2,7 @@
 
 Servicio REST desarrollado en C# con ASP.NET Core 8 que proporciona una interfaz web autenticada para ejecutar comandos de forma asíncrona mediante una cola de ejecución con procesamiento paralelo configurable.
 
-El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh tokens), validación contra una base de datos legacy, registro de auditoría y limpieza automática de tokens expirados.
+El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh tokens), validación contra una base de datos legacy, registro de auditoría, limpieza automática de tokens expirados, y gestión de ejecuciones a través de la tabla `ServiceItem` en una base de datos de servicio (PostgreSQL o SQL Server).
 
 ---
 
@@ -11,6 +11,7 @@ El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (o superior)
 - Windows (para ejecución de aplicaciones de consola nativas)
 - Base de datos legacy (SQLite, PostgreSQL o SQL Server) configurada con usuarios y roles
+- Base de datos de servicio (PostgreSQL o SQL Server) para la tabla `ServiceItem` y consultas a `base_datos`
 
 ---
 
@@ -23,10 +24,11 @@ ServicioRESTEjecucionComandos/
 ├── appsettings.json                    # Configuración del servicio
 ├── Controllers/
 │   ├── AuthController.cs               # Endpoints de autenticación (login, refresh, logout)
-│   └── CommandController.cs            # Endpoint REST para ejecutar comandos (protegido)
+│   └── CommandController.cs            # Endpoints REST para comandos, base-datos, y consultas
 ├── Data/
 │   ├── AuthDbContext.cs                # Contexto EF Core para BD legacy (usuarios/roles)
-│   └── RefreshTokenDbContext.cs        # Contexto EF Core para BD SQLite (tokens/auditoría)
+│   ├── RefreshTokenDbContext.cs        # Contexto EF Core para BD SQLite (tokens/auditoría)
+│   └── ServiceDbContext.cs             # Contexto EF Core para BD de servicio (ServiceItem, BaseDatos)
 ├── DTOs/
 │   ├── LoginRequest.cs                 # DTO para solicitud de inicio de sesión
 │   ├── LoginResponse.cs                # DTO para respuesta con tokens JWT
@@ -41,10 +43,13 @@ ServicioRESTEjecucionComandos/
 │   ├── UserRole.cs                     # Modelo de rol de usuario
 │   ├── RefreshToken.cs                 # Modelo de token de refresco
 │   ├── AuthAuditLog.cs                 # Modelo de registro de auditoría
-│   └── ExecutionQueueItem.cs           # Modelo para items de la cola
+│   ├── ExecutionQueueItem.cs           # Modelo para items de la cola
+│   ├── ServiceItem.cs                  # Modelo para seguimiento de ejecuciones en BD
+│   └── BaseDatos.cs                    # Modelo para tabla base_datos (lookup)
 ├── Repositories/
 │   ├── RefreshTokenRepository.cs       # Repositorio para persistencia de refresh tokens
-│   └── AuthAuditLogRepository.cs       # Repositorio para registros de auditoría
+│   ├── AuthAuditLogRepository.cs       # Repositorio para registros de auditoría
+│   └── ServiceItemRepository.cs        # Repositorio para CRUD de ServiceItem
 ├── Services/
 │   ├── AuthService.cs                  # Orquestador de flujos de autenticación
 │   ├── JwtService.cs                   # Generación de tokens JWT
@@ -54,7 +59,7 @@ ServicioRESTEjecucionComandos/
 │   ├── ExecutionQueue.cs               # Cola thread-safe para items
 │   └── QueuedExecutionService.cs       # Servicio de fondo que procesa la cola
 └── wwwroot/
-    ├── index.html                      # Interfaz web para ejecutar comandos
+    ├── index.html                      # Interfaz web con selector de BD y tabla de resultados
     ├── login.html                      # Interfaz de inicio de sesión
     └── auth.js                         # Cliente JavaScript para autenticación
 ```
@@ -75,7 +80,7 @@ Configura los parámetros de la aplicación de consola que se ejecutará:
 | `Code` | Parámetro `-code` para el comando | `S_BOEIF_99_00001` |
 | `Start` | Parámetro `-start` (fecha inicio) | `2026-02-28` |
 | `End` | Parámetro `-end` (fecha fin) | `2026-02-28` |
-| `Codesend` | Parámetro `-codesend` | `IBBIS` |
+| `Codesend` | Parámetro `-codesend` (sobreescrito dinámicamente) | `IBBIS` |
 
 ### QueueConfig
 
@@ -86,11 +91,13 @@ Configura el comportamiento de la cola de ejecución:
 | `WaitSeconds` | Segundos de espera cuando la cola está vacía | `10` |
 | `MaxParallelExecutions` | Máximo de comandos ejecutándose simultáneamente | `1` |
 
-### ResultConfig
+### ServiceDb
 
-| Clave | Descripción | Valor por Defecto |
-|-------|-------------|-------------------|
-| `OutputPath` | Ruta donde se guardan los archivos de resultado | `D:\` |
+Configura la base de datos de servicio donde se almacena la tabla `ServiceItem`:
+
+| Clave | Descripción | Valores Válidos |
+|-------|-------------|-----------------|
+| `Provider` | Proveedor de base de datos para ServiceDb | `postgres`, `sqlserver` |
 
 ### Authentication
 
@@ -104,6 +111,7 @@ Configura el comportamiento de la cola de ejecución:
 |-------|-------------|
 | `AuthDatabase` | Cadena de conexión a la BD legacy (usuarios/roles) |
 | `RefreshTokenDatabase` | Cadena de conexión a la BD SQLite (tokens/auditoría) |
+| `ServiceDatabase` | Cadena de conexión a la BD de servicio (ServiceItem, base_datos) |
 
 ### Jwt
 
@@ -242,66 +250,126 @@ Cierra sesión revocando el token de refresco.
 
 ### Protección de Endpoints
 
-El endpoint `/api/command/execute-async` está protegido con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized`.
+Todos los endpoints de `/api/command/*` están protegidos con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized`.
 
 ---
 
 ## Endpoints de Ejecución de Comandos
 
-### POST /api/command/execute-async
+### GET /api/command/base-datos
 
-Encola una nueva solicitud de ejecución de comando. Requiere autenticación JWT.
+Devuelve todos los registros de la tabla `base_datos` para poblar el selector de base de datos.
 
-**Encabezados requeridos:**
+**Respuesta:**
+```json
+[
+  { "codigo": "XYZ", "nombre": "Base de Datos XYZ" },
+  { "codigo": "ABC", "nombre": "Base de Datos ABC" }
+]
 ```
-Authorization: Bearer <token_jwt>
+
+### GET /api/command/query-results?codigo=XYZ
+
+Ejecuta la consulta de seguimiento para el código de base de datos especificado.
+
+**Query ejecutado:**
+```sql
+SELECT s.tipoentidad, e.cod_envio, s.fechadescarga
+FROM dim_entidad_asfi e
+JOIN dtx_seguimiento s
+   ON e.tipo_entidad_asfi_codigo = s.tipoentidad
+WHERE e.cod_envio IS NOT NULL AND e.cod_envio <> '' AND s.codigo = XYZ
+ORDER BY s.fechadescarga DESC
+LIMIT 1000;
+```
+
+**Respuesta:**
+```json
+[
+  {
+    "tipoentidad": "ENTIDAD_1",
+    "cod_envio": "ENV001",
+    "fechadescarga": "2026-05-15T00:00:00"
+  }
+]
+```
+
+### POST /api/command/execute
+
+Encola una nueva ejecución de comando vinculada a un registro `ServiceItem`.
+
+**Solicitud:**
+```json
+{
+  "action": "Actualizar",
+  "codigo": "ENV001"
+}
 ```
 
 **Respuesta:**
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "Pending",
-  "message": "Command enqueued successfully"
+  "queueItemId": "123e4567-e89b-12d3-a456-426614174000",
+  "serviceItemId": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "PENDING",
+  "message": "Command enqueued successfully. Action: Actualizar"
 }
 ```
 
----
+### GET /api/command/status/{itemId}
 
-## Flujo de Ejecución
+Devuelve el estado actual de un `ServiceItem` por su `ItemId`. Usado para polling del progreso de ejecución.
 
-1. El usuario inicia sesión a través de la interfaz HTML
-2. El usuario presiona "Ejecutar" en la interfaz principal
-3. Se envía una solicitud POST autenticada al endpoint `/api/command/execute-async`
-4. Se crea un `ExecutionQueueItem` y se encola en `ExecutionQueue`
-5. Se devuelve inmediatamente el ID del item encolado
-6. `QueuedExecutionService` descola el item de forma automática
-7. `CommandExecutor` ejecuta `Datax.SAFI.Downloader.exe` con los parámetros configurados
-8. El resultado se guarda en `D:\ETLResult_[ID].json`
-
----
-
-## Archivos de Resultado
-
-Cada ejecución genera un archivo JSON en la ruta configurada (`D:\` por defecto):
-
-```
-D:\ETLResult_[GUID].json
-```
-
-Ejemplo de contenido:
-
+**Respuesta:**
 ```json
 {
   "itemId": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "Success",
+  "status": "SUCCESS",
   "exitCode": 0,
-  "output": "Output de la aplicación...",
+  "output": "Command output...",
   "error": "",
-  "executedAt": "2026-05-01T10:00:00Z",
-  "completedAt": "2026-05-01T10:05:00Z"
+  "executedAt": "2026-05-20T10:00:00Z",
+  "completedAt": "2026-05-20T10:05:00Z"
 }
 ```
+
+### GET /api/command/service-items
+
+Devuelve todos los registros de `ServiceItem` ordenados por creación descendente.
+
+---
+
+## Flujo de Ejecución (Actualizado)
+
+1. El usuario inicia sesión a través de la interfaz HTML
+2. Se cargan automáticamente las bases de datos disponibles desde la tabla `base_datos`
+3. El usuario selecciona una base de datos del combo box
+4. Se muestra una tabla con los resultados de la consulta de seguimiento (`dtx_seguimiento` + `dim_entidad_asfi`)
+5. Cada fila de la tabla incluye botones "Actualizar" y "Reprocesar"
+6. Al presionar uno de estos botones:
+   - Se crea un registro `ServiceItem` con estado `PENDING`
+   - Se encola un `ExecutionQueueItem` vinculado al `ServiceItemId`
+   - Se inicia polling automático del estado
+7. `QueuedExecutionService` descola el item y actualiza el estado a `RUNNING`
+8. `CommandExecutor` ejecuta `Datax.SAFI.Downloader.exe` con los parámetros configurados (usando el `codigo` dinámico como `Codesend`)
+9. Al finalizar, el estado se actualiza a `SUCCESS` (si `ExitCode == 0`) o `FAILED` (si `ExitCode != 0`)
+10. Los campos `Output`, `Error`, `ExitCode` y `CompletedAt` se actualizan en la tabla `ServiceItem`
+
+---
+
+## Tabla ServiceItem
+
+La tabla `ServiceItem` se crea automáticamente al iniciar el servicio (si no existe). Contiene:
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `ItemId` | GUID | Identificador único del registro |
+| `Status` | VARCHAR | Estado actual: `PENDING`, `RUNNING`, `SUCCESS`, `FAILED` |
+| `ExitCode` | INT (nullable) | Código de salida del comando ejecutado |
+| `Output` | TEXT (nullable) | Salida estándar del comando |
+| `Error` | TEXT (nullable) | Mensaje de error si la ejecución falló |
+| `ExecutedAt` | DATETIME (nullable) | Fecha/hora de inicio de ejecución |
+| `CompletedAt` | DATETIME (nullable) | Fecha/hora de finalización de ejecución |
 
 ---
 
@@ -340,14 +408,41 @@ Almacena usuarios y roles del sistema legacy. Soporta los siguientes proveedores
 
 Almacena tokens de refresco y registros de auditoría. Se crea automáticamente en la raíz del proyecto si no existe.
 
+### Base de Datos de Servicio (ServiceDatabase)
+
+Almacena la tabla `ServiceItem` (creada automáticamente) y proporciona acceso a las tablas existentes `base_datos`, `dim_entidad_asfi` y `dtx_seguimiento`. Soporta los siguientes proveedores:
+
+| Proveedor | Paquete | Configuración |
+|-----------|---------|---------------|
+| PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `ServiceDb.Provider = "postgres"` |
+| SQL Server | `Microsoft.EntityFrameworkCore.SqlServer` | `ServiceDb.Provider = "sqlserver"` |
+
+---
+
+## Cambios Recientes
+
+### Eliminación de ResultConfig.OutputPath
+
+La configuración `ResultConfig.OutputPath` ha sido eliminada. Los resultados de ejecución ya no se guardan como archivos JSON en disco. En su lugar, se almacenan en la tabla `ServiceItem` de la base de datos de servicio.
+
+### Nueva interfaz de usuario
+
+La interfaz principal (`index.html`) ahora incluye:
+
+- **Selector de base de datos:** Combo box que carga las bases de datos disponibles desde la tabla `base_datos`
+- **Tabla de resultados:** Muestra los resultados de la consulta de seguimiento para la base de datos seleccionada
+- **Botones de acción:** "Actualizar" y "Reprocesar" en cada fila, reemplazando el botón "Ejecutar Comando" anterior
+- **Indicador de estado:** Badge de estado en cada fila que se actualiza automáticamente mediante polling
+- **Notificaciones toast:** Mensajes de confirmación/error para las acciones del usuario
+
 ---
 
 ## Notas Importantes
 
 - Asegúrese de que la ruta `ExePath` apunte a una ubicación válida donde exista `Datax.SAFI.Downloader.exe`
-- El disco `D:` debe existir y tener espacio disponible para los archivos de resultado
-- Los parámetros del comando son estáticos y se leen del archivo de configuración
 - La clave secreta JWT (`Jwt:SecretKey`) debe tener al menos 32 caracteres
 - La base de datos legacy debe contener las tablas `user` y `userrole` con la estructura esperada
+- La base de datos de servicio debe contener la tabla `base_datos` con columnas `codigo` y `nombre`
+- La tabla `ServiceItem` se crea automáticamente al iniciar el servicio
 - El servicio no incluye Swagger; solo la interfaz HTML está disponible
 - Todos los comentarios y código fuente están en inglés, excepto este archivo de documentación

@@ -9,5 +9,5 @@ public class QueryResult
 
     public string CodEnvio { get; set; } = string.Empty;
 
-    public DateTime? FechaDescarga { get; set; }
+    public DateTime? Fechadatos { get; set; }
 }

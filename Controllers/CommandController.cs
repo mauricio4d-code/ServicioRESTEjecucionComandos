@@ -57,10 +57,10 @@ public class CommandController : ControllerBase
 
     /// <summary>
     /// Returns query results for the given database code.
-    /// Executes: SELECT s.tipoentidad, e.cod_envio, s.fechadescarga FROM dim_entidad_asfi e
-    /// JOIN dtx_seguimiento s ON e.tipo_entidad_asfi_codigo = s.tipoentidad
+    /// Executes: SELECT DISTINCT ON (e.cod_envio) s.tipoentidad, e.cod_envio, s.fechadatos
+    /// FROM dim_entidad_asfi e JOIN dtx_seguimiento s ON e.tipo_entidad_asfi_codigo = s.tipoentidad
     /// WHERE e.cod_envio IS NOT NULL AND e.cod_envio <> '' AND s.codigo = {codigo}
-    /// ORDER BY s.fechadescarga DESC LIMIT 1000
+    /// ORDER BY e.cod_envio, s.fechadatos DESC
     /// </summary>
     [HttpGet("query-results")]
     public async Task<IActionResult> GetQueryResults([FromQuery] string codigo)
@@ -74,18 +74,17 @@ public class CommandController : ControllerBase
         {
             var results = await _serviceDbContext.Database
                 .SqlQueryRaw<QueryResult>(
-                    @"SELECT 
+                    @"SELECT DISTINCT ON (e.cod_envio)
                         s.tipoentidad AS ""TipoEntidad"",
                         e.cod_envio AS ""CodEnvio"",
-                        s.fechadescarga AS ""FechaDescarga""
+                        s.fechadatos AS ""FechaDatos""
                     FROM dim_entidad_asfi e
                     JOIN dtx_seguimiento s
                         ON e.tipo_entidad_asfi_codigo = s.tipoentidad
-                    WHERE e.cod_envio IS NOT NULL 
-                        AND e.cod_envio <> '' 
+                    WHERE e.cod_envio IS NOT NULL
+                        AND e.cod_envio <> ''
                         AND s.codigo = {0}
-                    ORDER BY s.fechadescarga DESC
-                    LIMIT 1000",
+                    ORDER BY e.cod_envio, s.fechadatos DESC",
                     codigo)
                 .ToListAsync();
 

@@ -274,13 +274,17 @@ Ejecuta la consulta de seguimiento para el código de base de datos especificado
 
 **Query ejecutado:**
 ```sql
-SELECT s.tipoentidad, e.cod_envio, s.fechadescarga
+SELECT DISTINCT ON (e.cod_envio)
+       s.tipoentidad,
+       e.cod_envio,
+       s.fechadatos
 FROM dim_entidad_asfi e
 JOIN dtx_seguimiento s
    ON e.tipo_entidad_asfi_codigo = s.tipoentidad
-WHERE e.cod_envio IS NOT NULL AND e.cod_envio <> '' AND s.codigo = XYZ
-ORDER BY s.fechadescarga DESC
-LIMIT 1000;
+WHERE e.cod_envio IS NOT NULL
+  AND e.cod_envio <> ''
+  AND s.codigo = XYZ
+ORDER BY e.cod_envio, s.fechadatos DESC;
 ```
 
 **Respuesta:**
@@ -289,7 +293,7 @@ LIMIT 1000;
   {
     "tipoentidad": "ENTIDAD_1",
     "cod_envio": "ENV001",
-    "fechadescarga": "2026-05-15T00:00:00"
+    "fechadatos": "2026-05-15T00:00:00"
   }
 ]
 ```

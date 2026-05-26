@@ -323,7 +323,7 @@
                         <tr>
                             <th>Tipo Entidad</th>
                             <th>Cod Envio</th>
-                            <th>Fecha Descarga</th>
+                            <th>Fecha</th>
                             <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
@@ -345,6 +345,18 @@
         // ========================
         let currentCodigo = "";
         let pollingIntervals = {};
+
+        // ========================
+        //  Format date as YYYY/MM/DD
+        // ========================
+        function formatDateYYYYMMDD(dateValue) {
+            const d = new Date(dateValue);
+            if (isNaN(d.getTime())) return "-";
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            return `${year}/${month}/${day}`;
+        }
 
         // ========================
         //  Load base_datos on page load
@@ -436,9 +448,9 @@
                 codEnvio.textContent = row.codEnvio || "-";
                 tr.appendChild(codEnvio);
 
-                const fechaDescarga = document.createElement("td");
-                fechaDescarga.textContent = row.fechaDescarga ? new Date(row.fechaDescarga).toLocaleDateString() : "-";
-                tr.appendChild(fechaDescarga);
+                const fechadatos = document.createElement("td");
+                fechadatos.textContent = row.fechadatos ? formatDateYYYYMMDD(row.fechadatos) : "-";
+                tr.appendChild(fechadatos);
 
                 // Status cell
                 const statusCell = document.createElement("td");

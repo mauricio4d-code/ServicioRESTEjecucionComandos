@@ -19,7 +19,7 @@ namespace ServicioRESTEjecucionComandos.Controllers;
 public class CommandController : ControllerBase
 {
     private readonly ExecutionQueue _executionQueue;
-    private readonly ServiceItemRepository _serviceItemRepo;
+    private readonly CommandExecutionHistoryRepository _historyRepo;
     private readonly ServiceDbContext _serviceDbContext;
 
     /// <summary>
@@ -27,11 +27,11 @@ public class CommandController : ControllerBase
     /// </summary>
     public CommandController(
         ExecutionQueue executionQueue,
-        ServiceItemRepository serviceItemRepo,
+        CommandExecutionHistoryRepository historyRepo,
         ServiceDbContext serviceDbContext)
     {
         _executionQueue = executionQueue;
-        _serviceItemRepo = serviceItemRepo;
+        _historyRepo = historyRepo;
         _serviceDbContext = serviceDbContext;
     }
 
@@ -56,11 +56,8 @@ public class CommandController : ControllerBase
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Returns query results for the given database code.
-    /// Executes: SELECT DISTINCT ON (e.cod_envio) s.tipoentidad, e.cod_envio, s.fechadatos
-    /// FROM dim_entidad_asfi e JOIN dtx_seguimiento s ON e.tipo_entidad_asfi_codigo = s.tipoentidad
-    /// WHERE e.cod_envio IS NOT NULL AND e.cod_envio <> '' AND s.codigo = {codigo}
-    /// ORDER BY e.cod_envio, s.fechadatos DESC
+    /// Returns query results for the given database code, including execution status from hist_command_execution.
+    /// Uses a CTE to get the latest execution status per row.
     /// </summary>
     [HttpGet("query-results")]
     public async Task<IActionResult> GetQueryResults([FromQuery] string codigo)
@@ -74,13 +71,33 @@ public class CommandController : ControllerBase
         {
             var results = await _serviceDbContext.Database
                 .SqlQueryRaw<QueryResult>(
-                    @"SELECT DISTINCT ON (e.cod_envio)
+                    @"WITH latest_exec AS (
+                        SELECT DISTINCT ON (""CodEnvio"", ""TipoEntidad"", ""FechaDatos"")
+                            ""CodEnvio"",
+                            ""TipoEntidad"",
+                            ""FechaDatos"",
+                            ""Status"" AS estado_ejecucion,
+                            ""CompletedAt"" AS ultima_fecha_ejecucion,
+                            ""Output"" AS ""output"",
+                            ""Error"" AS ""error""
+                        FROM hist_command_execution
+                        ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""CompletedAt"" DESC NULLS LAST
+                    )
+                    SELECT DISTINCT ON (e.cod_envio)
                         s.tipoentidad AS ""TipoEntidad"",
                         e.cod_envio AS ""CodEnvio"",
-                        s.fechadatos AS ""FechaDatos""
+                        s.fechadatos AS ""FechaDatos"",
+                        le.estado_ejecucion AS ""EstadoEjecucion"",
+                        le.ultima_fecha_ejecucion AS ""UltimaFechaEjecucion"",
+                        le.""output"" AS ""Output"",
+                        le.""error"" AS ""Error""
                     FROM dim_entidad_asfi e
                     JOIN dtx_seguimiento s
                         ON e.tipo_entidad_asfi_codigo = s.tipoentidad
+                    LEFT JOIN latest_exec le
+                        ON le.""CodEnvio"" = e.cod_envio
+                        AND le.""TipoEntidad"" = s.tipoentidad
+                        AND le.""FechaDatos"" = s.fechadatos
                     WHERE e.cod_envio IS NOT NULL
                         AND e.cod_envio <> ''
                         AND s.codigo = {0}
@@ -101,8 +118,8 @@ public class CommandController : ControllerBase
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Enqueues a new command execution linked to a ServiceItem record.
-    /// Accepts 'action' (Actualizar or Reprocesar) and 'codigo' from the request body.
+    /// Enqueues a new command execution linked to a CommandExecutionHistory record.
+    /// Accepts full row data (TipoEntidad, CodEnvio, FechaDatos, Codigo) from the request body.
     /// </summary>
     [HttpPost("execute")]
     public async Task<IActionResult> ExecuteCommand([FromBody] ExecuteRequest request)
@@ -112,22 +129,31 @@ public class CommandController : ControllerBase
             return BadRequest(new { error = "El parámetro 'codigo' es requerido." });
         }
 
-        // Create ServiceItem record with PENDING status
-        var serviceItem = new ServiceItem
-        {
-            Status = "PENDING"
-        };
-        await _serviceItemRepo.CreateAsync(serviceItem);
+        // Create CommandExecutionHistory record with PENDIENTE status
+        var fechaDatos = request.FechaDatos ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-        // Create queue item linked to the ServiceItem
+        var history = new CommandExecutionHistory
+        {
+            CodEnvio = request.CodEnvio ?? string.Empty,
+            TipoEntidad = request.TipoEntidad ?? string.Empty,
+            FechaDatos = fechaDatos,
+            Codigo = request.Codigo,
+            Status = "PENDIENTE"
+        };
+        await _historyRepo.CreateAsync(history);
+
+        // Create queue item linked to the CommandExecutionHistory
         var queueItem = new ExecutionQueueItem
         {
-            ServiceItemId = serviceItem.ItemId,
+            HistoryId = history.Id,
+            TipoEntidad = request.TipoEntidad ?? string.Empty,
+            //CodEnvio = request.CodEnvio ?? string.Empty,
+            FechaDatos = fechaDatos,
             Code = request.Codigo,
             Start = DateTime.Now.ToString("yyyy-MM-dd"),
             End = DateTime.Now.ToString("yyyy-MM-dd"),
-            Codesend = request.Codigo,
-            Status = "Pending",
+            Codesend = request.CodEnvio ?? string.Empty,
+            Status = "PENDIENTE",
             CreatedAt = DateTime.UtcNow
         };
 
@@ -136,37 +162,27 @@ public class CommandController : ControllerBase
         return Ok(new
         {
             QueueItemId = queueItemId,
-            ServiceItemId = serviceItem.ItemId,
-            Status = serviceItem.Status,
+            HistoryId = history.Id,
+            Status = history.Status,
             Message = $"Command enqueued successfully. Action: {request.Action}"
         });
     }
 
     /// <summary>
-    /// Returns the current status of a ServiceItem by its ItemId.
+    /// Returns the current status of a CommandExecutionHistory record by its Id (HistoryId).
     /// Used for polling execution progress.
     /// </summary>
-    [HttpGet("status/{itemId}")]
-    public async Task<IActionResult> GetServiceItemStatus(Guid itemId)
+    [HttpGet("status/{historyId}")]
+    public async Task<IActionResult> GetExecutionStatus(Guid historyId)
     {
-        var item = await _serviceItemRepo.GetByIdAsync(itemId);
+        var item = await _historyRepo.GetByIdAsync(historyId);
 
         if (item == null)
         {
-            return NotFound(new { error = $"ServiceItem with Id {itemId} not found." });
+            return NotFound(new { error = $"CommandExecutionHistory with Id {historyId} not found." });
         }
 
         return Ok(item);
-    }
-
-    /// <summary>
-    /// Returns all ServiceItem records ordered by creation time descending.
-    /// </summary>
-    [HttpGet("service-items")]
-    public async Task<IActionResult> GetAllServiceItems()
-    {
-        var items = await _serviceItemRepo.GetAllAsync();
-        return Ok(items);
     }
 }
 
@@ -179,6 +195,21 @@ public class ExecuteRequest
     /// The action type: "Actualizar" or "Reprocesar".
     /// </summary>
     public string? Action { get; set; }
+
+    /// <summary>
+    /// The entity type for this execution.
+    /// </summary>
+    public string? TipoEntidad { get; set; }
+
+    /// <summary>
+    /// The sending code identifier for this execution.
+    /// </summary>
+    public string? CodEnvio { get; set; }
+
+    /// <summary>
+    /// The data date for this execution.
+    /// </summary>
+    public DateOnly? FechaDatos { get; set; }
 
     /// <summary>
     /// The database code to execute against.

@@ -108,7 +108,7 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             width: 100%;
-            max-width: 400px;
+            max-width: 800px;
         }
 
         /* Data table */
@@ -378,7 +378,7 @@
                 data.forEach(item => {
                     const option = document.createElement("option");
                     option.value = item.codigo;
-                    option.textContent = item.nombre;
+                    option.textContent = `${item.codigo} - ${item.nombre}`;
                     select.appendChild(option);
                 });
             } catch (error) {
@@ -452,7 +452,7 @@
                 fechadatos.textContent = row.fechadatos ? formatDateYYYYMMDD(row.fechadatos) : "-";
                 tr.appendChild(fechadatos);
 
-                // Status cell
+                // Status cell - show execution status from query results
                 const statusCell = document.createElement("td");
                 const statusSpan = document.createElement("span");
                 statusSpan.id = `status-${row.codEnvio}`;
@@ -461,12 +461,25 @@
                 const statusText = document.createElement("span");
                 statusText.id = `statusText-${row.codEnvio}`;
                 statusText.className = "status-text";
-                statusText.textContent = "-";
+                statusText.textContent = row.estadoEjecucion || "-";
                 statusSpan.appendChild(statusText);
                 // Tooltip container (hidden by default)
                 const tooltipEl = document.createElement("div");
                 tooltipEl.className = "status-tooltip";
                 tooltipEl.id = `tooltip-${row.codEnvio}`;
+                // Build tooltip content: use Output/Error for terminal states, fallback to last execution date
+                let tooltipContent = "";
+                if (row.estadoEjecucion === "EXITOSO" && row.output) {
+                    tooltipContent = row.output;
+                } else if (row.estadoEjecucion === "FALLIDO" && row.error) {
+                    tooltipContent = row.error;
+                } else if (row.ultimaFechaEjecucion) {
+                    tooltipContent = `Última ejecución: ${formatDateYYYYMMDD(row.ultimaFechaEjecucion)}`;
+                }
+                if (tooltipContent) {
+                    tooltipEl.textContent = tooltipContent;
+                    statusSpan.classList.add("has-tooltip");
+                }
                 statusSpan.appendChild(tooltipEl);
 
                 // Hover events for tooltip positioning
@@ -480,6 +493,12 @@
                     tooltipEl.classList.remove("visible");
                 });
 
+                // Apply status class based on estadoEjecucion
+                if (row.estadoEjecucion) {
+                    const statusClass = getStatusClass(row.estadoEjecucion);
+                    statusSpan.classList.add(statusClass);
+                }
+
                 statusCell.appendChild(statusSpan);
                 tr.appendChild(statusCell);
 
@@ -489,14 +508,14 @@
                 const actualizarBtn = document.createElement("button");
                 actualizarBtn.className = "btn btn-actualizar";
                 actualizarBtn.textContent = "Actualizar";
-                actualizarBtn.onclick = () => executeAction("Actualizar", row.codEnvio);
+                actualizarBtn.onclick = () => executeAction("Actualizar", row);
                 actionsCell.appendChild(actualizarBtn);
 
                 const repDocBtn = document.createElement("button");
                 repDocBtn.className = "btn btn-reprocesar";
                 repDocBtn.textContent = "Reprocesar";
                 repDocBtn.style.marginLeft = "8px";
-                repDocBtn.onclick = () => executeAction("Reprocesar", row.codEnvio);
+                repDocBtn.onclick = () => executeAction("Reprocesar", row);
                 actionsCell.appendChild(repDocBtn);
 
                 tr.appendChild(actionsCell);
@@ -507,12 +526,14 @@
         // ========================
         //  Execute action (Actualizar/Reprocesar)
         // ========================
-        async function executeAction(action, codEnvio) {
+        async function executeAction(action, row) {
             const token = getAccessToken();
             if (!token) {
                 showToast("No hay token de sesión. Inicie sesión.", "error");
                 return;
             }
+
+            const codEnvio = row.codEnvio;
 
             // Disable buttons for this row
             disableButtonsForRow(codEnvio);
@@ -524,16 +545,22 @@
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${token}`
                     },
-                    body: JSON.stringify({ action: action, codigo: codEnvio })
+                    body: JSON.stringify({
+                        action: action,
+                        tipoEntidad: row.tipoEntidad,
+                        codEnvio: row.codEnvio,
+                        fechaDatos: row.fechadatos,
+                        codigo: currentCodigo
+                    })
                 });
 
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
                 const data = await res.json();
-                showToast(`Comando encolado. ServiceItemId: ${data.serviceItemId}`, "success");
+                showToast(`Comando encolado. HistoryId: ${data.historyId}`, "success");
 
-                // Start polling for status
-                startPolling(data.serviceItemId, codEnvio);
+                // Start polling for status using HistoryId
+                startPolling(data.historyId, codEnvio);
 
             } catch (error) {
                 showToast(`Error: ${error.message}`, "error");
@@ -542,11 +569,11 @@
         }
 
         // ========================
-        //  Polling for ServiceItem status
+        //  Polling for CommandExecutionHistory status
         // ========================
-        function startPolling(serviceItemId, codEnvio) {
-            if (pollingIntervals[serviceItemId]) {
-                clearInterval(pollingIntervals[serviceItemId]);
+        function startPolling(historyId, codEnvio) {
+            if (pollingIntervals[historyId]) {
+                clearInterval(pollingIntervals[historyId]);
             }
 
             const interval = setInterval(async () => {
@@ -557,7 +584,7 @@
                 }
 
                 try {
-                    const res = await fetch(`${API_BASE}/api/command/status/${serviceItemId}`, {
+                    const res = await fetch(`${API_BASE}/api/command/status/${historyId}`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
 
@@ -567,21 +594,21 @@
 
                     // Determine tooltip content for terminal states
                     let tooltipContent = "";
-                    if (item.status === "SUCCESS" && item.output) {
+                    if (item.status === "EXITOSO" && item.output) {
                         tooltipContent = item.output;
-                    } else if (item.status === "FAILED" && item.error) {
+                    } else if (item.status === "FALLIDO" && item.error) {
                         tooltipContent = item.error;
                     }
 
                     updateStatusBadge(codEnvio, item.status, tooltipContent);
 
                     // Stop polling when terminal status reached
-                    if (item.status === "SUCCESS" || item.status === "FAILED") {
+                    if (item.status === "EXITOSO" || item.status === "FALLIDO") {
                         clearInterval(interval);
-                        delete pollingIntervals[serviceItemId];
+                        delete pollingIntervals[historyId];
                         enableButtonsForRow(codEnvio);
 
-                        if (item.status === "SUCCESS") {
+                        if (item.status === "EXITOSO") {
                             showToast("Ejecución completada con éxito.", "success");
                         } else {
                             showToast(`Ejecución fallida. Error: ${item.error || "Desconocido"}`, "error");
@@ -592,7 +619,7 @@
                 }
             }, 3000);
 
-            pollingIntervals[serviceItemId] = interval;
+            pollingIntervals[historyId] = interval;
         }
 
         // ========================
@@ -606,6 +633,19 @@
             const tooltipWidth = tooltipEl.offsetWidth;
             tooltipEl.style.top = (rect.top - tooltipHeight - 10) + "px";
             tooltipEl.style.left = (rect.left + rect.width / 2 - tooltipWidth / 2) + "px";
+        }
+
+        // ========================
+        //  Map Spanish status to CSS class
+        // ========================
+        function getStatusClass(status) {
+            switch (status) {
+                case "PENDIENTE": return "status-pending";
+                case "EN PROCESO": return "status-running";
+                case "EXITOSO": return "status-success";
+                case "FALLIDO": return "status-failed";
+                default: return "status-pending";
+            }
         }
 
         // ========================
@@ -624,16 +664,16 @@
             statusEl.className = "status-badge";
 
             switch (status) {
-                case "PENDING":
+                case "PENDIENTE":
                     statusEl.classList.add("status-pending");
                     break;
-                case "RUNNING":
+                case "EN PROCESO":
                     statusEl.classList.add("status-running");
                     break;
-                case "SUCCESS":
+                case "EXITOSO":
                     statusEl.classList.add("status-success");
                     break;
-                case "FAILED":
+                case "FALLIDO":
                     statusEl.classList.add("status-failed");
                     break;
                 default:

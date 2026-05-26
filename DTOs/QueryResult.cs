@@ -9,5 +9,25 @@ public class QueryResult
 
     public string CodEnvio { get; set; } = string.Empty;
 
-    public DateTime? Fechadatos { get; set; }
+    public DateOnly? Fechadatos { get; set; }
+
+    /// <summary>
+    /// Execution status from hist_command_execution (PENDIENTE, EN PROCESO, EXITOSO, FALLIDO).
+    /// </summary>
+    public string? EstadoEjecucion { get; set; }
+
+    /// <summary>
+    /// Last execution timestamp from hist_command_execution.
+    /// </summary>
+    public DateTime? UltimaFechaEjecucion { get; set; }
+
+    /// <summary>
+    /// Standard output from the last successful execution.
+    /// </summary>
+    public string? Output { get; set; }
+
+    /// <summary>
+    /// Error output from the last failed execution.
+    /// </summary>
+    public string? Error { get; set; }
 }

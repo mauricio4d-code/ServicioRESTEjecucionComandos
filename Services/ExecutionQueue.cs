@@ -18,7 +18,7 @@ public class ExecutionQueue
     public Guid Enqueue(ExecutionQueueItem item)
     {
         item.Id = Guid.NewGuid();
-        item.Status = "Pending";
+        item.Status = "PENDIENTE";
         item.CreatedAt = DateTime.UtcNow;
         _queue.Enqueue(item);
         return item.Id;

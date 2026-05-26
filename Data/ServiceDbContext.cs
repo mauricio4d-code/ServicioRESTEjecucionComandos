@@ -4,7 +4,7 @@ using ServicioRESTEjecucionComandos.Models;
 namespace ServicioRESTEjecucionComandos.Data;
 
 /// <summary>
-/// DbContext for the service database storing ServiceItem records and providing
+/// DbContext for the service database storing CommandExecutionHistory records and providing
 /// read access to the legacy base_datos table. Auto-created on startup.
 /// </summary>
 public class ServiceDbContext : DbContext
@@ -13,19 +13,23 @@ public class ServiceDbContext : DbContext
     {
     }
 
-    public DbSet<ServiceItem> ServiceItems => Set<ServiceItem>();
+    public DbSet<CommandExecutionHistory> CommandExecutionHistories => Set<CommandExecutionHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // ServiceItem entity configuration - managed table (created via raw SQL on startup)
-        modelBuilder.Entity<ServiceItem>(entity =>
+        // CommandExecutionHistory entity configuration - managed table (created via raw SQL on startup)
+        modelBuilder.Entity<CommandExecutionHistory>(entity =>
         {
-            entity.ToTable("ServiceItem");
-            entity.HasKey(e => e.ItemId);
+            entity.ToTable("hist_command_execution");
+            entity.HasKey(e => e.Id);
 
-            entity.Property(e => e.ItemId).HasColumnName("ItemId").ValueGeneratedOnAdd();
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.CodEnvio).HasColumnName("CodEnvio").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.TipoEntidad).HasColumnName("TipoEntidad").IsRequired();
+            entity.Property(e => e.FechaDatos).HasColumnName("FechaDatos").IsRequired().HasColumnType("date");
+            entity.Property(e => e.Codigo).HasColumnName("Codigo").IsRequired();
             entity.Property(e => e.Status).HasColumnName("Status").IsRequired().HasMaxLength(20);
             entity.Property(e => e.ExitCode).HasColumnName("ExitCode");
             entity.Property(e => e.Output).HasColumnName("Output");

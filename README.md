@@ -72,15 +72,11 @@ El archivo [`appsettings.json`](appsettings.json) contiene todas las configuraci
 
 ### DataxConfig
 
-Configura los parámetros de la aplicación de consola que se ejecutará:
+Configura la ruta de la aplicación de consola que se ejecutará:
 
 | Clave | Descripción | Ejemplo |
 |-------|-------------|---------|
 | `ExePath` | Ruta completa a `Datax.SAFI.Downloader.exe` | `C:\ruta\a\la\app.exe` |
-| `Code` | Parámetro `-code` para el comando | `S_BOEIF_99_00001` |
-| `Start` | Parámetro `-start` (fecha inicio) | `2026-02-28` |
-| `End` | Parámetro `-end` (fecha fin) | `2026-02-28` |
-| `Codesend` | Parámetro `-codesend` (sobreescrito dinámicamente) | `IBBIS` |
 
 ### QueueConfig
 

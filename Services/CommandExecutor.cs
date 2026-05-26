@@ -42,10 +42,10 @@ public class CommandExecutor
     public async Task<ExecutionResult> ExecuteAsync(ExecutionQueueItem item)
     {
         var itemId = item.Id;
-        var serviceItemId = item.ServiceItemId;
+        var historyId = item.HistoryId;
 
-        _logger.LogInformation("Executing command for item {ItemId} (ServiceItem {ServiceItemId}): {ExePath} -code {Code} -start {Start} -end {End} -codesend {Codesend}",
-            itemId, serviceItemId, _exePath, item.Code, item.Start, item.End, item.Codesend);
+        _logger.LogInformation("Executing command for item {ItemId} (HistoryId {HistoryId}): {ExePath} -code {Code} -start {Start} -end {End} -codesend {Codesend}",
+            itemId, historyId, _exePath, item.Code, item.Start, item.End, item.Codesend);
 
         try
         {

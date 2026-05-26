@@ -1,7 +1,7 @@
 namespace ServicioRESTEjecucionComandos.Models;
 
 /// <summary>
-/// Represents an item in the execution queue, linked to a ServiceItem record.
+/// Represents an item in the execution queue, linked to a CommandExecutionHistory record.
 /// </summary>
 public class ExecutionQueueItem
 {
@@ -11,9 +11,24 @@ public class ExecutionQueueItem
     public Guid Id { get; set; }
 
     /// <summary>
-    /// The ItemId of the associated ServiceItem record in the database.
+    /// The Id of the associated CommandExecutionHistory record in the database.
     /// </summary>
-    public Guid ServiceItemId { get; set; }
+    public Guid HistoryId { get; set; }
+
+    /// <summary>
+    /// The entity type associated with this execution.
+    /// </summary>
+    public string TipoEntidad { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The sending code identifier for the entity.
+    /// </summary>
+    public string CodEnvio { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The data date associated with this execution.
+    /// </summary>
+    public DateOnly FechaDatos { get; set; }
 
     /// <summary>
     /// The code parameter for the Datax command.
@@ -36,9 +51,9 @@ public class ExecutionQueueItem
     public string Codesend { get; set; } = string.Empty;
 
     /// <summary>
-    /// Current status of the execution item.
+    /// Current status of the execution item: PENDIENTE, EN PROCESO, EXITOSO, FALLIDO.
     /// </summary>
-    public string Status { get; set; } = "Pending";
+    public string Status { get; set; } = "PENDIENTE";
 
     /// <summary>
     /// Result or error message after execution completes.

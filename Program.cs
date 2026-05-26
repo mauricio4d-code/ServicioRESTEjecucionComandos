@@ -16,10 +16,6 @@ var authenticationConfig = builder.Configuration.GetSection("Authentication");
 var serviceDbConfig = builder.Configuration.GetSection("ServiceDb");
 
 var exePath = dataxConfig.GetValue<string>("ExePath") ?? string.Empty;
-var code = dataxConfig.GetValue<string>("Code") ?? string.Empty;
-var start = dataxConfig.GetValue<string>("Start") ?? string.Empty;
-var end = dataxConfig.GetValue<string>("End") ?? string.Empty;
-var codesend = dataxConfig.GetValue<string>("Codesend") ?? string.Empty;
 
 var waitSeconds = queueConfig.GetValue<int>("WaitSeconds");
 var maxParallelExecutions = queueConfig.GetValue<int>("MaxParallelExecutions");
@@ -88,7 +84,7 @@ builder.Services.AddDbContext<ServiceDbContext>(options =>
 // -----------------------------------------------------------------------
 builder.Services.AddScoped<RefreshTokenRepository>();
 builder.Services.AddScoped<AuthAuditLogRepository>();
-builder.Services.AddScoped<ServiceItemRepository>();
+builder.Services.AddScoped<CommandExecutionHistoryRepository>();
 
 // -----------------------------------------------------------------------
 // Service registrations
@@ -205,11 +201,15 @@ using (var scope = app.Services.CreateScope())
         {
             // SQL Server syntax
             createTableSql = @"
-                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ServiceItem')
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'hist_command_execution')
                 BEGIN
-                    CREATE TABLE [ServiceItem] (
-                        [ItemId] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-                        [Status] NVARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                    CREATE TABLE [hist_command_execution] (
+                        [Id] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                        [CodEnvio] NVARCHAR(50) NOT NULL,
+                        [TipoEntidad] NVARCHAR(50) NOT NULL,
+                        [FechaDatos] DATE NOT NULL,
+                        [Codigo] NVARCHAR(50) NOT NULL,
+                        [Status] NVARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
                         [ExitCode] INT,
                         [Output] NVARCHAR(MAX),
                         [Error] NVARCHAR(MAX),
@@ -218,8 +218,8 @@ using (var scope = app.Services.CreateScope())
                     );
                 END";
             createIndexSql = @"
-                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ServiceItem_Status')
-                    CREATE INDEX [IX_ServiceItem_Status] ON [ServiceItem] ([Status]);";
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_command_execution_Status')
+                    CREATE INDEX [IX_hist_command_execution_Status] ON [hist_command_execution] ([Status]);";
         }
         else
         {
@@ -227,9 +227,13 @@ using (var scope = app.Services.CreateScope())
             serviceDbContext.Database.ExecuteSqlRaw(@"CREATE EXTENSION IF NOT EXISTS pgcrypto;");
             
             createTableSql = @"
-                CREATE TABLE IF NOT EXISTS ""ServiceItem"" (
-                    ""ItemId"" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    ""Status"" VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                CREATE TABLE IF NOT EXISTS ""hist_command_execution"" (
+                    ""Id"" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    ""CodEnvio"" VARCHAR(50) NOT NULL,
+                    ""TipoEntidad"" VARCHAR(50) NOT NULL,
+                    ""FechaDatos"" DATE NOT NULL,
+                    ""Codigo"" VARCHAR(50) NOT NULL,
+                    ""Status"" VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
                     ""ExitCode"" INTEGER,
                     ""Output"" TEXT,
                     ""Error"" TEXT,
@@ -237,12 +241,12 @@ using (var scope = app.Services.CreateScope())
                     ""CompletedAt"" TIMESTAMP WITH TIME ZONE
                 )";
             createIndexSql = @"
-                CREATE INDEX IF NOT EXISTS ""IX_ServiceItem_Status"" ON ""ServiceItem"" (""Status"")";
+                CREATE INDEX IF NOT EXISTS ""IX_hist_command_execution_Status"" ON ""hist_command_execution"" (""Status"")";
         }
 
         serviceDbContext.Database.ExecuteSqlRaw(createTableSql);
         serviceDbContext.Database.ExecuteSqlRaw(createIndexSql);
-        logger.LogInformation("Service database schema ensured via raw SQL (ServiceItem table created if not exists).");
+        logger.LogInformation("Service database schema ensured via raw SQL (hist_command_execution table created if not exists).");
     }
     catch (Exception ex)
     {

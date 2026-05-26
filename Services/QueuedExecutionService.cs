@@ -6,7 +6,7 @@ namespace ServicioRESTEjecucionComandos.Services;
 
 /// <summary>
 /// Background service that continuously dequeues and processes ExecutionQueueItem instances
-/// with configurable parallel execution limits, updating ServiceItem status in the database.
+/// with configurable parallel execution limits, updating CommandExecutionHistory status in the database.
 /// </summary>
 public class QueuedExecutionService : BackgroundService
 {
@@ -51,15 +51,15 @@ public class QueuedExecutionService : BackgroundService
                 // so that at most MaxParallelExecutions items are ever in RUNNING state.
                 if (_semaphore.CurrentCount > 0 && _queue.TryDequeue(out var item) && item != null)
                 {
-                    _logger.LogInformation("Dequeued item {ItemId} (ServiceItem {ServiceItemId}). Acquiring execution slot.", item.Id, item.ServiceItemId);
+                    _logger.LogInformation("Dequeued item {ItemId} (History {HistoryId}). Acquiring execution slot.", item.Id, item.HistoryId);
 
                     // Acquire semaphore slot before marking as RUNNING
                     await _semaphore.WaitAsync(stoppingToken);
 
-                    // Update ServiceItem status to RUNNING only after slot is acquired
+                    // Update CommandExecutionHistory status to EN PROCESO only after slot is acquired
                     await UpdateStatusInScopeAsync(
-                        item.ServiceItemId,
-                        "RUNNING",
+                        item.HistoryId,
+                        "EN PROCESO",
                         executedAt: DateTime.UtcNow);
 
                     _logger.LogInformation("Acquired execution slot for item {ItemId}. Starting ProcessItemAsync.", item.Id);
@@ -103,24 +103,24 @@ public class QueuedExecutionService : BackgroundService
 
     /// <summary>
     /// Processes a single queue item by executing the command through CommandExecutor
-    /// and updating the ServiceItem record with final status.
+    /// and updating the CommandExecutionHistory record with final status.
     /// </summary>
     /// <param name="item">The queue item to process.</param>
     /// <returns>True if processing succeeded; otherwise, false.</returns>
     public async Task<bool> ProcessItemAsync(ExecutionQueueItem item)
     {
-        _logger.LogInformation("Processing item {ItemId}. ServiceItem status is RUNNING.", item.Id);
+        _logger.LogInformation("Processing item {ItemId}. CommandExecutionHistory status is EN PROCESO.", item.Id);
 
         try
         {
             var result = await _executor.ExecuteAsync(item);
 
             var completedAt = DateTime.UtcNow;
-            var status = result.Success ? "SUCCESS" : "FAILED";
+            var status = result.Success ? "EXITOSO" : "FALLIDO";
 
-            // Update ServiceItem with final status and execution details
+            // Update CommandExecutionHistory with final status and execution details
             await UpdateStatusInScopeAsync(
-                item.ServiceItemId,
+                item.HistoryId,
                 status,
                 exitCode: result.ExitCode,
                 output: result.Output,
@@ -129,11 +129,11 @@ public class QueuedExecutionService : BackgroundService
 
             if (result.Success)
             {
-                _logger.LogInformation("Item {ItemId} processed successfully. ServiceItem status set to SUCCESS.", item.Id);
+                _logger.LogInformation("Item {ItemId} processed successfully. CommandExecutionHistory status set to EXITOSO.", item.Id);
             }
             else
             {
-                _logger.LogWarning("Item {ItemId} processing failed with exit code {ExitCode}. ServiceItem status set to FAILED.", item.Id, result.ExitCode);
+                _logger.LogWarning("Item {ItemId} processing failed with exit code {ExitCode}. CommandExecutionHistory status set to FALLIDO.", item.Id, result.ExitCode);
             }
 
             // Update the in-memory item status as well
@@ -147,14 +147,14 @@ public class QueuedExecutionService : BackgroundService
         {
             _logger.LogError(ex, "Exception while processing item {ItemId}", item.Id);
 
-            // Mark as FAILED in database on unexpected exception
+            // Mark as FALLIDO in database on unexpected exception
             await UpdateStatusInScopeAsync(
-                item.ServiceItemId,
-                "FAILED",
+                item.HistoryId,
+                "FALLIDO",
                 error: ex.Message,
                 completedAt: DateTime.UtcNow);
 
-            item.Status = "FAILED";
+            item.Status = "FALLIDO";
             item.Result = ex.Message;
             item.CompletedAt = DateTime.UtcNow;
             return false;
@@ -162,11 +162,11 @@ public class QueuedExecutionService : BackgroundService
     }
 
     /// <summary>
-    /// Creates a scoped service provider and calls UpdateStatusAsync on ServiceItemRepository,
+    /// Creates a scoped service provider and calls UpdateStatusAsync on CommandExecutionHistoryRepository,
     /// ensuring the scoped DbContext is properly disposed after each call.
     /// </summary>
     private async Task UpdateStatusInScopeAsync(
-        Guid serviceItemId,
+        Guid historyId,
         string status,
         int? exitCode = null,
         string? output = null,
@@ -175,9 +175,9 @@ public class QueuedExecutionService : BackgroundService
         DateTime? completedAt = null)
     {
         using var scope = _scopeFactory.CreateScope();
-        var repo = scope.ServiceProvider.GetRequiredService<ServiceItemRepository>();
+        var repo = scope.ServiceProvider.GetRequiredService<CommandExecutionHistoryRepository>();
         await repo.UpdateStatusAsync(
-            serviceItemId,
+            historyId,
             status,
             exitCode: exitCode,
             output: output,

@@ -773,7 +773,7 @@
                 showToast(`Comando encolado. HistoryId: ${data.historyId}`, "success");
 
                 // Start polling for status using HistoryId
-                startPolling(data.historyId, codEnvio);
+                startPolling(data.historyId, codEnvio, row.fechadatos);
 
             } catch (error) {
                 showToast(`Error: ${error.message}`, "error");
@@ -784,7 +784,7 @@
         // ========================
         //  Polling for CommandExecutionHistory status
         // ========================
-        function startPolling(historyId, codEnvio) {
+        function startPolling(historyId, codEnvio, fechadatos) {
             if (pollingIntervals[historyId]) {
                 clearInterval(pollingIntervals[historyId]);
             }
@@ -812,6 +812,7 @@
                         clearInterval(interval);
                         delete pollingIntervals[historyId];
                         enableButtonsForRow(codEnvio);
+                        addReprocesarButton(codEnvio, fechadatos);
 
                         if (item.status === "EXITOSO") {
                             showToast("Ejecución completada con éxito.", "success");
@@ -906,6 +907,47 @@
 
         function enableButtonsForRow(codEnvio) {
             // Re-enable buttons
+        }
+
+        // ========================
+        //  Add Reprocesar button after polling completes
+        // ========================
+        function addReprocesarButton(codEnvio, fechadatos) {
+            const statusEl = document.getElementById(`status-${codEnvio}`);
+            if (!statusEl) return;
+
+            // Navigate from status element to the row
+            const statusCell = statusEl.parentElement;
+            const tr = statusCell.parentElement;
+            if (!tr) return;
+
+            // Extract tipoEntidad from the first <td> of the row
+            const tipoEntidad = tr.querySelector("td:first-child")?.textContent || "";
+
+            const actionsCell = tr.querySelector("td:last-child");
+            if (!actionsCell) return;
+
+            const actionWrapper = actionsCell.querySelector(".action-buttons");
+            if (!actionWrapper) return;
+
+            // Avoid adding duplicate button
+            if (actionWrapper.querySelector(".btn-reprocesar")) return;
+
+            const repDocBtn = document.createElement("button");
+            repDocBtn.className = "btn btn-reprocesar";
+            repDocBtn.textContent = currentIsDayBased
+                ? getReprocesarLabelDayBased(fechadatos)
+                : getReprocesarLabel(fechadatos);
+
+            // Build a row-like object for executeAction
+            const rowData = {
+                tipoEntidad: tipoEntidad,
+                codEnvio: codEnvio,
+                fechadatos: fechadatos
+            };
+            repDocBtn.onclick = () => executeAction("Reprocesar", rowData);
+
+            actionWrapper.appendChild(repDocBtn);
         }
 
         // ========================

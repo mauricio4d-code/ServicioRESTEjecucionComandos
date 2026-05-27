@@ -350,6 +350,19 @@
         //  Format date as YYYY/MM/DD
         // ========================
         function formatDateYYYYMMDD(dateValue) {
+            if (!dateValue) return "-";
+
+            // DateOnly values are serialized as "YYYY-MM-DD" strings.
+            // Passing them to new Date() interprets them as UTC midnight,
+            // which shifts the date back by one day in UTC-4 timezone.
+            // Parse date-only strings directly to avoid timezone conversion.
+            const dateOnlyMatch = String(dateValue).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (dateOnlyMatch) {
+                return `${dateOnlyMatch[1]}/${dateOnlyMatch[2]}/${dateOnlyMatch[3]}`;
+            }
+
+            // Full datetime strings (e.g., UltimaFechaEjecucion) should be
+            // converted to local time before extracting the date components.
             const d = new Date(dateValue);
             if (isNaN(d.getTime())) return "-";
             const year = d.getFullYear();

@@ -93,7 +93,7 @@ public class CommandController : ControllerBase
                         le.""error"" AS ""Error""
                     FROM dim_entidad_asfi e
                     JOIN dtx_seguimiento s
-                        ON e.tipo_entidad_asfi_codigo = s.tipoentidad
+                        ON s.cod_envio = e.cod_envio
                     LEFT JOIN latest_exec le
                         ON le.""CodEnvio"" = e.cod_envio
                         AND le.""TipoEntidad"" = s.tipoentidad

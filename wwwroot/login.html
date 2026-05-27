@@ -175,8 +175,9 @@
         // ========================
         //  On page load: if already authenticated, redirect to index.html
         // ========================
-        (function init() {
-            if (isAuthenticated()) {
+        (async function init() {
+            const authenticated = await ensureAuthenticated();
+            if (authenticated) {
                 window.location.href = "index.html";
             }
         })();

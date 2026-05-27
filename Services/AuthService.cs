@@ -142,6 +142,17 @@ public class AuthService
             return null;
         }
 
+        // Validate user state - deactivated users cannot refresh tokens
+        if (user.Userstate != "Activo")
+        {
+            _logger.LogWarning("Token refresh blocked for inactive user: {UserId} from IP {ClientIp}", result.UserId, clientIp);
+
+            await LogAuditEventAsync("RefreshFailed", result.UserId, user.Email, clientIp, userAgent,
+                $"Token refresh blocked: User {user.Email} is not active (state: {user.Userstate})", false);
+
+            return null;
+        }
+
         var accessToken = _jwtService.GenerateToken(user, user.UserRole);
 
         _logger.LogInformation("Token refresh successful for user: {UserId}", result.UserId);

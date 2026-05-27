@@ -516,7 +516,7 @@
         }
 
         // ========================
-        //  Build "Reprocesar del [DIA] de <Month>" label for day-based codes
+        //  Build "Reprocesar [DIA] de <Month>" label for day-based codes
         // ========================
         function getReprocesarLabelDayBased(fechaValue) {
             if (!fechaValue) return "Reprocesar";
@@ -541,7 +541,7 @@
             const nextMonth = nextDate.getMonth() + 1;
             const monthName = spanishMonths[nextMonth - 1];
 
-            return `Reprocesar del ${nextDay} de ${monthName}`;
+            return `Reprocesar ${nextDay} de ${monthName}`;
         }
 
         // ========================
@@ -573,13 +573,8 @@
         //  Load base_datos on page load
         // ========================
         async function loadBaseDatos() {
-            const token = getAccessToken();
-            if (!token) return;
-
             try {
-                const res = await fetch(`${API_BASE}/api/command/base-datos`, {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
+                const res = await authenticatedFetch(`${API_BASE}/api/command/base-datos`);
 
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -620,11 +615,8 @@
             loading.classList.add("visible");
             tableContainer.style.display = "none";
 
-            const token = getAccessToken();
             try {
-                const res = await fetch(`${API_BASE}/api/command/query-results?codigo=${encodeURIComponent(codigo)}`, {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
+                const res = await authenticatedFetch(`${API_BASE}/api/command/query-results?codigo=${encodeURIComponent(codigo)}`);
 
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -754,23 +746,16 @@
         //  Execute action (Actualizar/Reprocesar)
         // ========================
         async function executeAction(action, row) {
-            const token = getAccessToken();
-            if (!token) {
-                showToast("No hay token de sesión. Inicie sesión.", "error");
-                return;
-            }
-
             const codEnvio = row.codEnvio;
 
             // Disable buttons for this row
             disableButtonsForRow(codEnvio);
 
             try {
-                const res = await fetch(`${API_BASE}/api/command/execute`, {
+                const res = await authenticatedFetch(`${API_BASE}/api/command/execute`, {
                     method: "POST",
                     headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
+                        "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
                         action: action,
@@ -805,16 +790,8 @@
             }
 
             const interval = setInterval(async () => {
-                const token = getAccessToken();
-                if (!token) {
-                    clearInterval(interval);
-                    return;
-                }
-
                 try {
-                    const res = await fetch(`${API_BASE}/api/command/status/${historyId}`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                    });
+                    const res = await authenticatedFetch(`${API_BASE}/api/command/status/${historyId}`);
 
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -953,14 +930,17 @@
         // ========================
         //  On page load: check if authenticated
         // ========================
-        (function init() {
-            const token = getAccessToken();
-            if (token && !isTokenExpired()) {
+        (async function init() {
+            const authenticated = await ensureAuthenticated();
+            if (authenticated) {
                 // Decode name from JWT
+                const token = getAccessToken();
                 const payload = decodeJwtPayload(token);
                 const name = extractUserName(payload, "Usuario");
                 document.getElementById("userName").textContent = name;
                 loadBaseDatos();
+                // Schedule auto-refresh for while page is open
+                scheduleAutoRefresh();
             } else {
                 clearTokens();
                 window.location.href = "login.html";

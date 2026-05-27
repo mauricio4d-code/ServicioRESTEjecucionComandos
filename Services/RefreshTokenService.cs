@@ -114,17 +114,14 @@ public class RefreshTokenService
             };
         }
 
-        // Mark old token as revoked
-        storedToken.IsRevoked = true;
-        storedToken.RevokedAtUtc = DateTime.UtcNow;
-        storedToken.RevokedByIp = clientIp;
-        await _repository.UpdateAsync(storedToken);
-
-        // Generate new token (rotation)
+        // Generate new token FIRST (if this fails, old token remains valid)
         var newToken = await GenerateAsync(storedToken.UserId, clientIp, userAgent);
         var newTokenHash = ComputeSha256Hash(newToken);
 
-        // Update replaced_by reference
+        // Now mark old token as revoked and set replacement reference
+        storedToken.IsRevoked = true;
+        storedToken.RevokedAtUtc = DateTime.UtcNow;
+        storedToken.RevokedByIp = clientIp;
         storedToken.ReplacedByTokenHash = newTokenHash;
         await _repository.UpdateAsync(storedToken);
         await _repository.SaveChangesAsync();
@@ -195,8 +192,20 @@ public class RefreshTokenService
     /// </summary>
     public async Task RevokeAllForUserAsync(int userId)
     {
-        await _repository.DeleteByUserIdAsync(userId);
-        _logger.LogInformation("All refresh tokens revoked for user {UserId}", userId);
+        var count = await _repository.RevokeByUserIdAsync(userId);
+        _logger.LogInformation("Revoked {Count} refresh tokens for user {UserId}", count, userId);
+
+        // Log audit event for bulk revocation
+        var auditLog = new AuthAuditLog
+        {
+            TimestampUtc = DateTime.UtcNow,
+            EventType = "BulkTokenRevoked",
+            UserId = userId,
+            Message = $"All refresh tokens revoked for user {userId} ({count} tokens)",
+            Success = true
+        };
+        await _auditLogRepository.AddAsync(auditLog);
+        await _auditLogRepository.SaveChangesAsync();
     }
 
     /// <summary>

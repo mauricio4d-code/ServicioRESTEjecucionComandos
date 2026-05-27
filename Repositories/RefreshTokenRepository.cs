@@ -49,6 +49,29 @@ public class RefreshTokenRepository
         await _context.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Revokes all refresh tokens for a given user without deleting them.
+    /// </summary>
+    public async Task<int> RevokeByUserIdAsync(int userId)
+    {
+        var tokens = await _context.RefreshTokens
+            .Where(rt => rt.UserId == userId && !rt.IsRevoked)
+            .ToListAsync();
+
+        foreach (var token in tokens)
+        {
+            token.IsRevoked = true;
+            token.RevokedAtUtc = DateTime.UtcNow;
+        }
+
+        if (tokens.Any())
+        {
+            await _context.SaveChangesAsync();
+        }
+
+        return tokens.Count;
+    }
+
     public async Task<List<RefreshToken>> FindExpiredAsync(DateTime utcNow)
     {
         return await _context.RefreshTokens

@@ -12,6 +12,10 @@ const AUTO_REFRESH_THRESHOLD_SECONDS = 60;
 
 let autoRefreshTimer = null;
 
+// Guard to prevent concurrent refresh calls (infinite loop protection)
+let refreshInProgress = false;
+let refreshPromise = null;
+
 // ========================
 //  Token storage helpers
 // ========================
@@ -91,9 +95,45 @@ function scheduleAutoRefresh() {
     }, triggerIn);
 }
 
+/**
+ * Performs a single refresh-token rotation. Uses a promise guard so that
+ * concurrent callers all wait for the SAME in-flight request instead of
+ * each one hitting the server independently (which caused the infinite-loop bug).
+ */
 async function autoRefreshToken() {
+    // If token is still valid, nothing to do
+    if (!isTokenExpired()) {
+        return true;
+    }
+
+    // Deduplication: if a refresh is already in flight, wait for it
+    if (refreshInProgress) {
+        return refreshPromise;
+    }
+
     const refresh = getRefreshToken();
-    if (!refresh) return;
+    if (!refresh) return false;
+
+    refreshInProgress = true;
+
+    // Ensure the promise is cleaned up even if an early return happens
+    refreshPromise = _doRefresh()
+        .finally(() => {
+            refreshInProgress = false;
+            refreshPromise = null;
+        });
+
+    try {
+        const result = await refreshPromise;
+        return result;
+    } catch {
+        return false;
+    }
+}
+
+async function _doRefresh() {
+    const refresh = getRefreshToken();
+    if (!refresh) return false;
 
     try {
         const res = await fetch(`${API_BASE}/api/auth/refresh`, {
@@ -106,7 +146,7 @@ async function autoRefreshToken() {
             console.warn("Auto-refresh failed, redirecting to login.");
             clearTokens();
             window.location.href = "login.html";
-            return;
+            return false;
         }
 
         const data = await res.json();
@@ -115,8 +155,10 @@ async function autoRefreshToken() {
 
         // Schedule next refresh
         scheduleAutoRefresh();
+        return true;
     } catch (err) {
         console.error("Auto-refresh error:", err);
+        return false;
     }
 }
 
@@ -153,4 +195,48 @@ async function logoutAndRedirect() {
 function isAuthenticated() {
     const token = getAccessToken();
     return token && !isTokenExpired();
+}
+
+// ========================
+//  Ensure authenticated - attempts refresh if token expired
+// ========================
+
+async function ensureAuthenticated() {
+    if (isAuthenticated()) {
+        return true;
+    }
+
+    // Token expired or missing - try refresh (uses deduplication guard)
+    const refreshSuccess = await autoRefreshToken();
+    if (!refreshSuccess) {
+        clearTokens();
+        return false;
+    }
+    return true;
+}
+
+// ========================
+//  Authenticated fetch - auto-refreshes on 401
+// ========================
+
+async function authenticatedFetch(url, options = {}) {
+    const token = getAccessToken();
+    if (!options.headers) options.headers = {};
+    options.headers["Authorization"] = `Bearer ${token}`;
+
+    let response = await fetch(url, options);
+
+    // If 401 and we haven't retried yet, try to refresh
+    if (response.status === 401 && !options._retried) {
+        const refreshSuccess = await autoRefreshToken();
+        if (refreshSuccess) {
+            const newToken = getAccessToken();
+            options.headers["Authorization"] = `Bearer ${newToken}`;
+            options._retried = true;
+            response = await fetch(url, options);
+        }
+        // If refresh failed, autoRefreshToken already redirected to login
+    }
+
+    return response;
 }

@@ -22,7 +22,7 @@ public class ServiceDbContext : DbContext
         // ETLExecutionHistory entity configuration - managed table (created via raw SQL on startup)
         modelBuilder.Entity<ETLExecutionHistory>(entity =>
         {
-            entity.ToTable("hist_command_execution");
+            entity.ToTable("hist_etl_execution");
             entity.HasKey(e => e.Id);
 
             entity.Property(e => e.Id).HasColumnName("Id");

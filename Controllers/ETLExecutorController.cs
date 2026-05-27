@@ -68,7 +68,7 @@ public class ETLExecutorController : ControllerBase
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Returns query results for the given database code, including execution status from hist_command_execution.
+    /// Returns query results for the given database code, including execution status from hist_etl_execution.
     /// Uses a CTE to get the latest execution status per row.
     /// </summary>
     [HttpGet("query-results")]
@@ -92,7 +92,7 @@ public class ETLExecutorController : ControllerBase
                             ""CompletedAt"" AS ultima_fecha_ejecucion,
                             ""Output"" AS ""output"",
                             ""Error"" AS ""error""
-                        FROM hist_command_execution
+                        FROM hist_etl_execution
                         ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""CompletedAt"" DESC NULLS LAST
                     )
                     SELECT DISTINCT ON (e.cod_envio)

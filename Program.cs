@@ -201,9 +201,9 @@ using (var scope = app.Services.CreateScope())
         {
             // SQL Server syntax
             createTableSql = @"
-                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'hist_command_execution')
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'hist_etl_execution')
                 BEGIN
-                    CREATE TABLE [hist_command_execution] (
+                    CREATE TABLE [hist_etl_execution] (
                         [Id] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
                         [CodEnvio] NVARCHAR(50) NOT NULL,
                         [TipoEntidad] NVARCHAR(50) NOT NULL,
@@ -218,8 +218,8 @@ using (var scope = app.Services.CreateScope())
                     );
                 END";
             createIndexSql = @"
-                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_command_execution_Status')
-                    CREATE INDEX [IX_hist_command_execution_Status] ON [hist_command_execution] ([Status]);";
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_Status')
+                    CREATE INDEX [IX_hist_etl_execution_Status] ON [hist_etl_execution] ([Status]);";
         }
         else
         {
@@ -227,7 +227,7 @@ using (var scope = app.Services.CreateScope())
             serviceDbContext.Database.ExecuteSqlRaw(@"CREATE EXTENSION IF NOT EXISTS pgcrypto;");
             
             createTableSql = @"
-                CREATE TABLE IF NOT EXISTS ""hist_command_execution"" (
+                CREATE TABLE IF NOT EXISTS ""hist_etl_execution"" (
                     ""Id"" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     ""CodEnvio"" VARCHAR(50) NOT NULL,
                     ""TipoEntidad"" VARCHAR(50) NOT NULL,
@@ -241,12 +241,12 @@ using (var scope = app.Services.CreateScope())
                     ""CompletedAt"" TIMESTAMP WITH TIME ZONE
                 )";
             createIndexSql = @"
-                CREATE INDEX IF NOT EXISTS ""IX_hist_command_execution_Status"" ON ""hist_command_execution"" (""Status"")";
+                CREATE INDEX IF NOT EXISTS ""IX_hist_etl_execution_Status"" ON ""hist_etl_execution"" (""Status"")";
         }
 
         serviceDbContext.Database.ExecuteSqlRaw(createTableSql);
         serviceDbContext.Database.ExecuteSqlRaw(createIndexSql);
-        logger.LogInformation("Service database schema ensured via raw SQL (hist_command_execution table created if not exists).");
+        logger.LogInformation("Service database schema ensured via raw SQL (hist_etl_execution table created if not exists).");
     }
     catch (Exception ex)
     {

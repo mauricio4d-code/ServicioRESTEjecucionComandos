@@ -12,12 +12,12 @@ public class QueryResult
     public DateOnly? Fechadatos { get; set; }
 
     /// <summary>
-    /// Execution status from hist_command_execution (PENDIENTE, EN PROCESO, EXITOSO, FALLIDO).
+    /// Execution status from hist_etl_execution (PENDIENTE, EN PROCESO, EXITOSO, FALLIDO).
     /// </summary>
     public string? EstadoEjecucion { get; set; }
 
     /// <summary>
-    /// Last execution timestamp from hist_command_execution.
+    /// Last execution timestamp from hist_etl_execution.
     /// </summary>
     public DateTime? UltimaFechaEjecucion { get; set; }
 

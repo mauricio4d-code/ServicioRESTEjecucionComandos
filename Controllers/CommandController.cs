@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.DTOs;
 using ServicioRESTEjecucionComandos.Models;
@@ -21,6 +22,7 @@ public class CommandController : ControllerBase
     private readonly ExecutionQueue _executionQueue;
     private readonly CommandExecutionHistoryRepository _historyRepo;
     private readonly ServiceDbContext _serviceDbContext;
+    private readonly string[] _dailyCodes;
 
     /// <summary>
     /// Initializes a new instance of CommandController.
@@ -28,11 +30,13 @@ public class CommandController : ControllerBase
     public CommandController(
         ExecutionQueue executionQueue,
         CommandExecutionHistoryRepository historyRepo,
-        ServiceDbContext serviceDbContext)
+        ServiceDbContext serviceDbContext,
+        IConfiguration configuration)
     {
         _executionQueue = executionQueue;
         _historyRepo = historyRepo;
         _serviceDbContext = serviceDbContext;
+        _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
     }
 
     // -----------------------------------------------------------------------
@@ -40,7 +44,8 @@ public class CommandController : ControllerBase
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Returns all records from the base_datos table for populating the dropdown.
+    /// Returns all records from the base_datos table for populating the dropdown,
+    /// enriched with an IsDayBased flag for codes configured in QueueConfig:DailyCodes.
     /// </summary>
     [HttpGet("base-datos")]
     public async Task<IActionResult> GetBaseDatos()
@@ -48,7 +53,15 @@ public class CommandController : ControllerBase
         var baseDatosList = await _serviceDbContext.Database
             .SqlQueryRaw<BaseDatos>("SELECT codigo, nombre FROM base_datos")
             .ToListAsync();
-        return Ok(baseDatosList);
+
+        var response = baseDatosList.Select(item => new BaseDatosResponse
+        {
+            Codigo = item.Codigo,
+            Nombre = item.Nombre,
+            IsDayBased = _dailyCodes.Contains(item.Codigo, StringComparer.OrdinalIgnoreCase)
+        }).ToList();
+
+        return Ok(response);
     }
 
     // -----------------------------------------------------------------------
@@ -142,16 +155,32 @@ public class CommandController : ControllerBase
         };
         await _historyRepo.CreateAsync(history);
 
+        // Determine Start/End dates: day-based codes use the next day of FechaDatos, others use today
+        string startDate, endDate;
+        if (request.IsDayBased)
+        {
+            var nextDay = fechaDatos.AddDays(1);
+            var nextnextDay = fechaDatos.AddDays(2);
+            startDate = nextDay.ToString("yyyy-MM-dd");
+            endDate = nextnextDay.ToString("yyyy-MM-dd");
+        }
+        else
+        {
+            var nextMonth = fechaDatos.AddMonths(1);
+            startDate = new DateOnly(nextMonth.Year, nextMonth.Month, 1).ToString("yyyy-MM-dd");
+            var lastDay = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
+            endDate = new DateOnly(nextMonth.Year, nextMonth.Month, lastDay).ToString("yyyy-MM-dd");
+        }
+
         // Create queue item linked to the CommandExecutionHistory
         var queueItem = new ExecutionQueueItem
         {
             HistoryId = history.Id,
             TipoEntidad = request.TipoEntidad ?? string.Empty,
-            //CodEnvio = request.CodEnvio ?? string.Empty,
             FechaDatos = fechaDatos,
             Code = request.Codigo,
-            Start = DateTime.Now.ToString("yyyy-MM-dd"),
-            End = DateTime.Now.ToString("yyyy-MM-dd"),
+            Start = startDate,
+            End = endDate,
             Codesend = request.CodEnvio ?? string.Empty,
             Status = "PENDIENTE",
             CreatedAt = DateTime.UtcNow
@@ -215,4 +244,9 @@ public class ExecuteRequest
     /// The database code to execute against.
     /// </summary>
     public string? Codigo { get; set; }
+
+    /// <summary>
+    /// Indicates whether this code uses day-based date logic instead of month-based.
+    /// </summary>
+    public bool IsDayBased { get; set; }
 }

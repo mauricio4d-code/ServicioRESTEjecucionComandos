@@ -140,6 +140,20 @@
         }
 
         /* Action buttons */
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 160px 160px;
+            gap: 8px;
+        }
+
+        .action-buttons .btn {
+            width: 100%;
+        }
+
+        .action-buttons .btn-reprocesar {
+            grid-column: 2;
+        }
+
         .btn-actualizar {
             background-color: #0078d4;
             color: #ffffff;
@@ -344,7 +358,191 @@
         //  Global state
         // ========================
         let currentCodigo = "";
+        let currentIsDayBased = false;
         let pollingIntervals = {};
+
+        // ========================
+        //  Check if current year-month is greater than fecha's year-month
+        // ========================
+        function isCurrentYearMonthGreaterThanFecha(fechaValue) {
+            if (!fechaValue) return false;
+
+            // Parse the fecha to extract year and month.
+            // DateOnly values come as "YYYY-MM-DD" strings.
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})-(\d{2})/);
+            if (dateOnlyMatch) {
+                const fechaYear = parseInt(dateOnlyMatch[1], 10);
+                const fechaMonth = parseInt(dateOnlyMatch[2], 10);
+                const now = new Date();
+                const currentYear = now.getFullYear();
+                const currentMonth = now.getMonth() + 1; // getMonth() is 0-based
+                // Compare as year-month integers to handle cross-year comparisons
+                const currentYM = currentYear * 12 + currentMonth;
+                const fechaYM = fechaYear * 12 + fechaMonth;
+                return currentYM > fechaYM;
+            }
+
+            // Fallback: try parsing as full datetime
+            const d = new Date(fechaValue);
+            if (isNaN(d.getTime())) return false;
+            const fechaYear = d.getFullYear();
+            const fechaMonth = d.getMonth() + 1;
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1;
+            const currentYM = currentYear * 12 + currentMonth;
+            const fechaYM = fechaYear * 12 + fechaMonth;
+            return currentYM > fechaYM;
+        }
+
+        // ========================
+        //  Check if current date is greater than fecha's date (day-level)
+        // ========================
+        function isCurrentDateGreaterThanFecha(fechaValue) {
+            if (!fechaValue) return false;
+
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (dateOnlyMatch) {
+                const fechaDate = new Date(parseInt(dateOnlyMatch[1]), parseInt(dateOnlyMatch[2]) - 1, parseInt(dateOnlyMatch[3]));
+                const now = new Date();
+                now.setHours(0, 0, 0, 0);
+                return now > fechaDate;
+            }
+
+            const d = new Date(fechaValue);
+            if (isNaN(d.getTime())) return false;
+            d.setHours(0, 0, 0, 0);
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            return now > d;
+        }
+
+        // ========================
+        //  Spanish month names
+        // ========================
+        const spanishMonths = [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ];
+
+        // ========================
+        //  Get last day of a given month (year, month 1-12)
+        // ========================
+        function getLastDayOfMonth(year, month) {
+            return new Date(year, month, 0).getDate();
+        }
+
+        // ========================
+        //  Build "Actualizar del 1 al X de <Month>" label from fecha
+        // ========================
+        function getActualizarLabel(fechaValue) {
+            if (!fechaValue) return "Actualizar";
+
+            // Parse DateOnly "YYYY-MM-DD" or "YYYY/MM/DD"
+            let year, month;
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})/);
+            if (dateOnlyMatch) {
+                year = parseInt(dateOnlyMatch[1], 10);
+                month = parseInt(dateOnlyMatch[2], 10);
+            } else {
+                const d = new Date(fechaValue);
+                if (isNaN(d.getTime())) return "Actualizar";
+                year = d.getFullYear();
+                month = d.getMonth() + 1;
+            }
+
+            // Next month (wrap December -> January)
+            const nextMonth = month % 12 + 1;
+            const nextYear = month === 12 ? year + 1 : year;
+
+            const lastDay = getLastDayOfMonth(nextYear, nextMonth);
+            const monthName = spanishMonths[nextMonth - 1];
+
+            return `Actualizar del 1 al ${lastDay} de ${monthName}`;
+        }
+
+        // ========================
+        //  Build "Actualizar [DIA] de <Month>" label for day-based codes
+        // ========================
+        function getActualizarLabelDayBased(fechaValue) {
+            if (!fechaValue) return "Actualizar";
+
+            let year, month, day;
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+            if (dateOnlyMatch) {
+                year = parseInt(dateOnlyMatch[1], 10);
+                month = parseInt(dateOnlyMatch[2], 10);
+                day = parseInt(dateOnlyMatch[3], 10);
+            } else {
+                const d = new Date(fechaValue);
+                if (isNaN(d.getTime())) return "Actualizar";
+                year = d.getFullYear();
+                month = d.getMonth() + 1;
+                day = d.getDate();
+            }
+
+            // Next day
+            const nextDate = new Date(year, month - 1, day + 1);
+            const nextDay = nextDate.getDate();
+            const nextMonth = nextDate.getMonth() + 1;
+            const monthName = spanishMonths[nextMonth - 1];
+
+            return `Actualizar ${nextDay} de ${monthName}`;
+        }
+
+        // ========================
+        //  Build "Reprocesar <Month>" label from fecha
+        // ========================
+        function getReprocesarLabel(fechaValue) {
+            if (!fechaValue) return "Reprocesar";
+
+            let year, month;
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})/);
+            if (dateOnlyMatch) {
+                year = parseInt(dateOnlyMatch[1], 10);
+                month = parseInt(dateOnlyMatch[2], 10);
+            } else {
+                const d = new Date(fechaValue);
+                if (isNaN(d.getTime())) return "Reprocesar";
+                year = d.getFullYear();
+                month = d.getMonth() + 1;
+            }
+
+            // Next month (wrap December -> January)
+            const nextMonth = month % 12 + 1;
+            const monthName = spanishMonths[nextMonth - 1];
+
+            return `Reprocesar ${monthName}`;
+        }
+
+        // ========================
+        //  Build "Reprocesar del [DIA] de <Month>" label for day-based codes
+        // ========================
+        function getReprocesarLabelDayBased(fechaValue) {
+            if (!fechaValue) return "Reprocesar";
+
+            let year, month, day;
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+            if (dateOnlyMatch) {
+                year = parseInt(dateOnlyMatch[1], 10);
+                month = parseInt(dateOnlyMatch[2], 10);
+                day = parseInt(dateOnlyMatch[3], 10);
+            } else {
+                const d = new Date(fechaValue);
+                if (isNaN(d.getTime())) return "Reprocesar";
+                year = d.getFullYear();
+                month = d.getMonth() + 1;
+                day = d.getDate();
+            }
+
+            // Next day
+            const nextDate = new Date(year, month - 1, day + 1);
+            const nextDay = nextDate.getDate();
+            const nextMonth = nextDate.getMonth() + 1;
+            const monthName = spanishMonths[nextMonth - 1];
+
+            return `Reprocesar del ${nextDay} de ${monthName}`;
+        }
 
         // ========================
         //  Format date as YYYY/MM/DD
@@ -392,6 +590,7 @@
                     const option = document.createElement("option");
                     option.value = item.codigo;
                     option.textContent = `${item.codigo} - ${item.nombre}`;
+                    option.dataset.isDayBased = item.isDayBased || "false";
                     select.appendChild(option);
                 });
             } catch (error) {
@@ -417,6 +616,7 @@
             }
 
             currentCodigo = codigo;
+            currentIsDayBased = select.selectedOptions[0]?.dataset?.isDayBased === "true";
             loading.classList.add("visible");
             tableContainer.style.display = "none";
 
@@ -517,20 +717,34 @@
 
                 // Actions cell
                 const actionsCell = document.createElement("td");
+                const actionWrapper = document.createElement("div");
+                actionWrapper.className = "action-buttons";
 
-                const actualizarBtn = document.createElement("button");
-                actualizarBtn.className = "btn btn-actualizar";
-                actualizarBtn.textContent = "Actualizar";
-                actualizarBtn.onclick = () => executeAction("Actualizar", row);
-                actionsCell.appendChild(actualizarBtn);
+                const canActualizar = currentIsDayBased
+                    ? isCurrentDateGreaterThanFecha(row.fechadatos)
+                    : isCurrentYearMonthGreaterThanFecha(row.fechadatos);
 
-                const repDocBtn = document.createElement("button");
-                repDocBtn.className = "btn btn-reprocesar";
-                repDocBtn.textContent = "Reprocesar";
-                repDocBtn.style.marginLeft = "8px";
-                repDocBtn.onclick = () => executeAction("Reprocesar", row);
-                actionsCell.appendChild(repDocBtn);
+                if (canActualizar) {
+                    const actualizarBtn = document.createElement("button");
+                    actualizarBtn.className = "btn btn-actualizar";
+                    actualizarBtn.textContent = currentIsDayBased
+                        ? getActualizarLabelDayBased(row.fechadatos)
+                        : getActualizarLabel(row.fechadatos);
+                    actualizarBtn.onclick = () => executeAction("Actualizar", row);
+                    actionWrapper.appendChild(actualizarBtn);
+                }
 
+                if (row.estadoEjecucion === "EXITOSO" || row.estadoEjecucion === "FALLIDO") {
+                    const repDocBtn = document.createElement("button");
+                    repDocBtn.className = "btn btn-reprocesar";
+                    repDocBtn.textContent = currentIsDayBased
+                        ? getReprocesarLabelDayBased(row.fechadatos)
+                        : getReprocesarLabel(row.fechadatos);
+                    repDocBtn.onclick = () => executeAction("Reprocesar", row);
+                    actionWrapper.appendChild(repDocBtn);
+                }
+
+                actionsCell.appendChild(actionWrapper);
                 tr.appendChild(actionsCell);
                 tbody.appendChild(tr);
             });
@@ -563,7 +777,8 @@
                         tipoEntidad: row.tipoEntidad,
                         codEnvio: row.codEnvio,
                         fechaDatos: row.fechadatos,
-                        codigo: currentCodigo
+                        codigo: currentCodigo,
+                        isDayBased: currentIsDayBased
                     })
                 });
 

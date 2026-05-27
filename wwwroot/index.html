@@ -574,7 +574,7 @@
         // ========================
         async function loadBaseDatos() {
             try {
-                const res = await authenticatedFetch(`${API_BASE}/api/command/base-datos`);
+                const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/base-datos`);
 
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -616,7 +616,7 @@
             tableContainer.style.display = "none";
 
             try {
-                const res = await authenticatedFetch(`${API_BASE}/api/command/query-results?codigo=${encodeURIComponent(codigo)}`);
+                const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/query-results?codigo=${encodeURIComponent(codigo)}`);
 
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -752,7 +752,7 @@
             disableButtonsForRow(codEnvio);
 
             try {
-                const res = await authenticatedFetch(`${API_BASE}/api/command/execute`, {
+                const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/execute`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
@@ -782,7 +782,7 @@
         }
 
         // ========================
-        //  Polling for CommandExecutionHistory status
+        //  Polling for ETLExecutionHistory status
         // ========================
         function startPolling(historyId, codEnvio, fechadatos) {
             if (pollingIntervals[historyId]) {
@@ -791,7 +791,7 @@
 
             const interval = setInterval(async () => {
                 try {
-                    const res = await authenticatedFetch(`${API_BASE}/api/command/status/${historyId}`);
+                    const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
 
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

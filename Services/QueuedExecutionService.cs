@@ -6,7 +6,7 @@ namespace ServicioRESTEjecucionComandos.Services;
 
 /// <summary>
 /// Background service that continuously dequeues and processes ExecutionQueueItem instances
-/// with configurable parallel execution limits, updating CommandExecutionHistory status in the database.
+/// with configurable parallel execution limits, updating ETLExecutionHistory status in the database.
 /// </summary>
 public class QueuedExecutionService : BackgroundService
 {
@@ -56,7 +56,7 @@ public class QueuedExecutionService : BackgroundService
                     // Acquire semaphore slot before marking as RUNNING
                     await _semaphore.WaitAsync(stoppingToken);
 
-                    // Update CommandExecutionHistory status to EN PROCESO only after slot is acquired
+                    // Update ETLExecutionHistory status to EN PROCESO only after slot is acquired
                     await UpdateStatusInScopeAsync(
                         item.HistoryId,
                         "EN PROCESO",
@@ -103,13 +103,13 @@ public class QueuedExecutionService : BackgroundService
 
     /// <summary>
     /// Processes a single queue item by executing the command through CommandExecutor
-    /// and updating the CommandExecutionHistory record with final status.
+    /// and updating the ETLExecutionHistory record with final status.
     /// </summary>
     /// <param name="item">The queue item to process.</param>
     /// <returns>True if processing succeeded; otherwise, false.</returns>
     public async Task<bool> ProcessItemAsync(ExecutionQueueItem item)
     {
-        _logger.LogInformation("Processing item {ItemId}. CommandExecutionHistory status is EN PROCESO.", item.Id);
+        _logger.LogInformation("Processing item {ItemId}. ETLExecutionHistory status is EN PROCESO.", item.Id);
 
         try
         {
@@ -118,7 +118,7 @@ public class QueuedExecutionService : BackgroundService
             var completedAt = DateTime.UtcNow;
             var status = result.Success ? "EXITOSO" : "FALLIDO";
 
-            // Update CommandExecutionHistory with final status and execution details
+            // Update ETLExecutionHistory with final status and execution details
             await UpdateStatusInScopeAsync(
                 item.HistoryId,
                 status,
@@ -129,11 +129,11 @@ public class QueuedExecutionService : BackgroundService
 
             if (result.Success)
             {
-                _logger.LogInformation("Item {ItemId} processed successfully. CommandExecutionHistory status set to EXITOSO.", item.Id);
+                _logger.LogInformation("Item {ItemId} processed successfully. ETLExecutionHistory status set to EXITOSO.", item.Id);
             }
             else
             {
-                _logger.LogWarning("Item {ItemId} processing failed with exit code {ExitCode}. CommandExecutionHistory status set to FALLIDO.", item.Id, result.ExitCode);
+                _logger.LogWarning("Item {ItemId} processing failed with exit code {ExitCode}. ETLExecutionHistory status set to FALLIDO.", item.Id, result.ExitCode);
             }
 
             // Update the in-memory item status as well
@@ -162,7 +162,7 @@ public class QueuedExecutionService : BackgroundService
     }
 
     /// <summary>
-    /// Creates a scoped service provider and calls UpdateStatusAsync on CommandExecutionHistoryRepository,
+    /// Creates a scoped service provider and calls UpdateStatusAsync on ETLExecutionHistoryRepository,
     /// ensuring the scoped DbContext is properly disposed after each call.
     /// </summary>
     private async Task UpdateStatusInScopeAsync(
@@ -175,7 +175,7 @@ public class QueuedExecutionService : BackgroundService
         DateTime? completedAt = null)
     {
         using var scope = _scopeFactory.CreateScope();
-        var repo = scope.ServiceProvider.GetRequiredService<CommandExecutionHistoryRepository>();
+        var repo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
         await repo.UpdateStatusAsync(
             historyId,
             status,

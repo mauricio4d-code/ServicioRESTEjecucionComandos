@@ -24,7 +24,7 @@ ServicioRESTEjecucionComandos/
 ├── appsettings.json                    # Configuración del servicio
 ├── Controllers/
 │   ├── AuthController.cs               # Endpoints de autenticación (login, refresh, logout)
-│   └── CommandController.cs            # Endpoints REST para comandos, base-datos, y consultas
+│   └── ETLExecutorController.cs        # Endpoints REST para ETL, base-datos, y consultas
 ├── Data/
 │   ├── AuthDbContext.cs                # Contexto EF Core para BD legacy (usuarios/roles)
 │   ├── RefreshTokenDbContext.cs        # Contexto EF Core para BD SQLite (tokens/auditoría)
@@ -246,13 +246,13 @@ Cierra sesión revocando el token de refresco.
 
 ### Protección de Endpoints
 
-Todos los endpoints de `/api/command/*` están protegidos con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized`.
+Todos los endpoints de `/api/etlexecutor/*` están protegidos con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized`.
 
 ---
 
 ## Endpoints de Ejecución de Comandos
 
-### GET /api/command/base-datos
+### GET /api/etlexecutor/base-datos
 
 Devuelve todos los registros de la tabla `base_datos` para poblar el selector de base de datos.
 
@@ -264,7 +264,7 @@ Devuelve todos los registros de la tabla `base_datos` para poblar el selector de
 ]
 ```
 
-### GET /api/command/query-results?codigo=XYZ
+### GET /api/etlexecutor/query-results?codigo=XYZ
 
 Ejecuta la consulta de seguimiento para el código de base de datos especificado.
 
@@ -294,7 +294,7 @@ ORDER BY e.cod_envio, s.fechadatos DESC;
 ]
 ```
 
-### POST /api/command/execute
+### POST /api/etlexecutor/execute
 
 Encola una nueva ejecución de comando vinculada a un registro `ServiceItem`.
 
@@ -316,7 +316,7 @@ Encola una nueva ejecución de comando vinculada a un registro `ServiceItem`.
 }
 ```
 
-### GET /api/command/status/{itemId}
+### GET /api/etlexecutor/status/{itemId}
 
 Devuelve el estado actual de un `ServiceItem` por su `ItemId`. Usado para polling del progreso de ejecución.
 
@@ -333,7 +333,7 @@ Devuelve el estado actual de un `ServiceItem` por su `ItemId`. Usado para pollin
 }
 ```
 
-### GET /api/command/service-items
+### GET /api/etlexecutor/service-items
 
 Devuelve todos los registros de `ServiceItem` ordenados por creación descendente.
 

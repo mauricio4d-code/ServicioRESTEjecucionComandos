@@ -84,7 +84,7 @@ builder.Services.AddDbContext<ServiceDbContext>(options =>
 // -----------------------------------------------------------------------
 builder.Services.AddScoped<RefreshTokenRepository>();
 builder.Services.AddScoped<AuthAuditLogRepository>();
-builder.Services.AddScoped<CommandExecutionHistoryRepository>();
+builder.Services.AddScoped<ETLExecutionHistoryRepository>();
 
 // -----------------------------------------------------------------------
 // Service registrations

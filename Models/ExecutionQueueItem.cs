@@ -1,7 +1,7 @@
 namespace ServicioRESTEjecucionComandos.Models;
 
 /// <summary>
-/// Represents an item in the execution queue, linked to a CommandExecutionHistory record.
+/// Represents an item in the execution queue, linked to an ETLExecutionHistory record.
 /// </summary>
 public class ExecutionQueueItem
 {
@@ -11,7 +11,7 @@ public class ExecutionQueueItem
     public Guid Id { get; set; }
 
     /// <summary>
-    /// The Id of the associated CommandExecutionHistory record in the database.
+    /// The Id of the associated ETLExecutionHistory record in the database.
     /// </summary>
     public Guid HistoryId { get; set; }
 

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.DTOs;
 using ServicioRESTEjecucionComandos.Models;
@@ -11,25 +10,25 @@ using ServicioRESTEjecucionComandos.Services;
 namespace ServicioRESTEjecucionComandos.Controllers;
 
 /// <summary>
-/// Controller providing endpoints for command execution, base-datos lookup, and query results.
+/// Controller providing endpoints for ETL execution, base-datos lookup, and query results.
 /// Requires authentication via JWT bearer token.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class CommandController : ControllerBase
+public class ETLExecutorController : ControllerBase
 {
     private readonly ExecutionQueue _executionQueue;
-    private readonly CommandExecutionHistoryRepository _historyRepo;
+    private readonly ETLExecutionHistoryRepository _historyRepo;
     private readonly ServiceDbContext _serviceDbContext;
     private readonly string[] _dailyCodes;
 
     /// <summary>
-    /// Initializes a new instance of CommandController.
+    /// Initializes a new instance of ETLExecutorController.
     /// </summary>
-    public CommandController(
+    public ETLExecutorController(
         ExecutionQueue executionQueue,
-        CommandExecutionHistoryRepository historyRepo,
+        ETLExecutionHistoryRepository historyRepo,
         ServiceDbContext serviceDbContext,
         IConfiguration configuration)
     {
@@ -131,21 +130,21 @@ public class CommandController : ControllerBase
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Enqueues a new command execution linked to a CommandExecutionHistory record.
+    /// Enqueues a new command execution linked to a ETLExecutionHistory record.
     /// Accepts full row data (TipoEntidad, CodEnvio, FechaDatos, Codigo) from the request body.
     /// </summary>
     [HttpPost("execute")]
-    public async Task<IActionResult> ExecuteCommand([FromBody] ExecuteRequest request)
+    public async Task<IActionResult> ExecuteCommand([FromBody] ETLExecuteRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Codigo))
         {
             return BadRequest(new { error = "El parámetro 'codigo' es requerido." });
         }
 
-        // Create CommandExecutionHistory record with PENDIENTE status
+        // Create ETLExecutionHistory record with PENDIENTE status
         var fechaDatos = request.FechaDatos ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-        var history = new CommandExecutionHistory
+        var history = new ETLExecutionHistory
         {
             CodEnvio = request.CodEnvio ?? string.Empty,
             TipoEntidad = request.TipoEntidad ?? string.Empty,
@@ -172,7 +171,7 @@ public class CommandController : ControllerBase
             endDate = new DateOnly(nextMonth.Year, nextMonth.Month, lastDay).ToString("yyyy-MM-dd");
         }
 
-        // Create queue item linked to the CommandExecutionHistory
+        // Create queue item linked to the ETLExecutionHistory
         var queueItem = new ExecutionQueueItem
         {
             HistoryId = history.Id,
@@ -198,7 +197,7 @@ public class CommandController : ControllerBase
     }
 
     /// <summary>
-    /// Returns the current status of a CommandExecutionHistory record by its Id (HistoryId).
+    /// Returns the current status of a ETLExecutionHistory record by its Id (HistoryId).
     /// Used for polling execution progress.
     /// </summary>
     [HttpGet("status/{historyId}")]
@@ -208,7 +207,7 @@ public class CommandController : ControllerBase
 
         if (item == null)
         {
-            return NotFound(new { error = $"CommandExecutionHistory with Id {historyId} not found." });
+            return NotFound(new { error = $"ETLExecutionHistory with Id {{historyId}} not found." });
         }
 
         return Ok(item);
@@ -216,9 +215,9 @@ public class CommandController : ControllerBase
 }
 
 /// <summary>
-/// Request DTO for the execute endpoint.
+/// Request DTO for the ETL execute endpoint.
 /// </summary>
-public class ExecuteRequest
+public class ETLExecuteRequest
 {
     /// <summary>
     /// The action type: "Actualizar" or "Reprocesar".

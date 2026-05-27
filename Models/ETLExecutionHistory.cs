@@ -1,10 +1,10 @@
 namespace ServicioRESTEjecucionComandos.Models;
 
 /// <summary>
-/// Represents a command execution history record stored in the <c>hist_command_execution</c> table.
+/// Represents an ETL execution history record stored in the <c>hist_command_execution</c> table.
 /// Each row captures the full execution context and result status.
 /// </summary>
-public class CommandExecutionHistory
+public class ETLExecutionHistory
 {
     /// <summary>
     /// Unique identifier for this execution history record.

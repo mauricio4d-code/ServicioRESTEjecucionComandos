@@ -4,7 +4,7 @@ using ServicioRESTEjecucionComandos.Models;
 namespace ServicioRESTEjecucionComandos.Data;
 
 /// <summary>
-/// DbContext for the service database storing CommandExecutionHistory records and providing
+/// DbContext for the service database storing ETLExecutionHistory records and providing
 /// read access to the legacy base_datos table. Auto-created on startup.
 /// </summary>
 public class ServiceDbContext : DbContext
@@ -13,14 +13,14 @@ public class ServiceDbContext : DbContext
     {
     }
 
-    public DbSet<CommandExecutionHistory> CommandExecutionHistories => Set<CommandExecutionHistory>();
+    public DbSet<ETLExecutionHistory> ETLExecutionHistories => Set<ETLExecutionHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // CommandExecutionHistory entity configuration - managed table (created via raw SQL on startup)
-        modelBuilder.Entity<CommandExecutionHistory>(entity =>
+        // ETLExecutionHistory entity configuration - managed table (created via raw SQL on startup)
+        modelBuilder.Entity<ETLExecutionHistory>(entity =>
         {
             entity.ToTable("hist_command_execution");
             entity.HasKey(e => e.Id);

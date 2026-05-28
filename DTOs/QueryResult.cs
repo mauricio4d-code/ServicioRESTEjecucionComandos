@@ -22,6 +22,11 @@ public class QueryResult
     public DateTime? UltimaFechaEjecucion { get; set; }
 
     /// <summary>
+    /// Trigger type that initiated this execution (MANUAL, PROGRAMADO, REPROCESO).
+    /// </summary>
+    public string? TriggerType { get; set; }
+
+    /// <summary>
     /// Standard output from the last successful execution.
     /// </summary>
     public string? Output { get; set; }

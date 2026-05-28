@@ -89,6 +89,7 @@ public class ETLExecutorController : ControllerBase
                             ""TipoEntidad"",
                             ""FechaDatos"",
                             ""Status"" AS estado_ejecucion,
+                            ""TriggerType"" AS trigger_type,
                             ""CompletedAt"" AS ultima_fecha_ejecucion,
                             ""Output"" AS ""output"",
                             ""Error"" AS ""error""
@@ -100,6 +101,7 @@ public class ETLExecutorController : ControllerBase
                         e.cod_envio AS ""CodEnvio"",
                         s.fechadatos AS ""FechaDatos"",
                         le.estado_ejecucion AS ""EstadoEjecucion"",
+                        le.trigger_type AS ""TriggerType"",
                         le.ultima_fecha_ejecucion AS ""UltimaFechaEjecucion"",
                         le.""output"" AS ""Output"",
                         le.""error"" AS ""Error""
@@ -144,13 +146,21 @@ public class ETLExecutorController : ControllerBase
         // Create ETLExecutionHistory record with PENDIENTE status
         var fechaDatos = request.FechaDatos ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
+        var triggerType = request.Action?.ToUpperInvariant() switch
+        {
+            "ACTUALIZAR" => "MANUAL",
+            "REPROCESAR" => "REPROCESO",
+            _ => "MANUAL"
+        };
+
         var history = new ETLExecutionHistory
         {
             CodEnvio = request.CodEnvio ?? string.Empty,
             TipoEntidad = request.TipoEntidad ?? string.Empty,
             FechaDatos = fechaDatos,
             Codigo = request.Codigo,
-            Status = "PENDIENTE"
+            Status = "PENDIENTE",
+            TriggerType = triggerType
         };
         await _historyRepo.CreateAsync(history);
 

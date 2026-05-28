@@ -37,6 +37,11 @@ public class ETLExecutionHistory
     public string Status { get; set; } = "PENDIENTE";
 
     /// <summary>
+    /// Trigger type that initiated this execution: MANUAL, PROGRAMADO, REPROCESO.
+    /// </summary>
+    public string TriggerType { get; set; } = "MANUAL";
+
+    /// <summary>
     /// Exit code from the command execution.
     /// </summary>
     public int? ExitCode { get; set; }

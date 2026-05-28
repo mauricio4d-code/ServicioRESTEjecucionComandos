@@ -31,6 +31,7 @@ public class ServiceDbContext : DbContext
             entity.Property(e => e.FechaDatos).HasColumnName("FechaDatos").IsRequired().HasColumnType("date");
             entity.Property(e => e.Codigo).HasColumnName("Codigo").IsRequired();
             entity.Property(e => e.Status).HasColumnName("Status").IsRequired().HasMaxLength(20);
+            entity.Property(e => e.TriggerType).HasColumnName("TriggerType").IsRequired().HasMaxLength(20).HasDefaultValue("MANUAL");
             entity.Property(e => e.ExitCode).HasColumnName("ExitCode");
             entity.Property(e => e.Output).HasColumnName("Output");
             entity.Property(e => e.Error).HasColumnName("Error");

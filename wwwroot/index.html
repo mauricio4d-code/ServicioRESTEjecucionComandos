@@ -339,6 +339,7 @@
                             <th>Cod Envio</th>
                             <th>Fecha</th>
                             <th>Estado</th>
+                            <th>Tipo de Ejecución</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -638,7 +639,7 @@
             tbody.innerHTML = "";
 
             if (!results || results.length === 0) {
-                tbody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>Sin resultados</td></tr>";
+                tbody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>Sin resultados</td></tr>";
                 return;
             }
 
@@ -706,6 +707,12 @@
 
                 statusCell.appendChild(statusSpan);
                 tr.appendChild(statusCell);
+
+                // TriggerType cell
+                const triggerTypeCell = document.createElement("td");
+                triggerTypeCell.id = `triggerType-${row.codEnvio}`;
+                triggerTypeCell.textContent = row.triggerType || "-";
+                tr.appendChild(triggerTypeCell);
 
                 // Actions cell
                 const actionsCell = document.createElement("td");
@@ -806,6 +813,7 @@
                     }
 
                     updateStatusBadge(codEnvio, item.status, tooltipContent);
+                    updateTriggerType(codEnvio, item.triggerType);
 
                     // Stop polling when terminal status reached
                     if (item.status === "EXITOSO" || item.status === "FALLIDO") {
@@ -826,6 +834,15 @@
             }, 3000);
 
             pollingIntervals[historyId] = interval;
+        }
+
+        // ========================
+        //  Update TriggerType cell in table
+        // ========================
+        function updateTriggerType(codEnvio, triggerType) {
+            const triggerTypeEl = document.getElementById(`triggerType-${codEnvio}`);
+            if (!triggerTypeEl) return;
+            triggerTypeEl.textContent = triggerType || "-";
         }
 
         // ========================

@@ -100,6 +100,35 @@
             color: #d32f2f;
             min-height: 20px;
         }
+
+        /* Navigation bar */
+        .nav-bar {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .nav-bar a {
+            text-decoration: none;
+            color: #0078d4;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .nav-bar a:hover {
+            background-color: #e8f0fe;
+        }
+
+        .nav-bar a.active {
+            background-color: #0078d4;
+            color: #ffffff;
+        }
     </style>
 </head>
 

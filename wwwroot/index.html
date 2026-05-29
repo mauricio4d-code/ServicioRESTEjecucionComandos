@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ejecucion de Comandos - Datax SAFI</title>
+    <title>Ejecucion de ETLs - Datax SAFI</title>
     <style>
         * {
             margin: 0;
@@ -78,6 +78,35 @@
 
         .logout-btn:hover {
             background-color: #b71c1c;
+        }
+
+        /* Navigation bar */
+        .nav-bar {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .nav-bar a {
+            text-decoration: none;
+            color: #0078d4;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .nav-bar a:hover {
+            background-color: #e8f0fe;
+        }
+
+        .nav-bar a.active {
+            background-color: #0078d4;
+            color: #ffffff;
         }
 
         .user-info {
@@ -307,7 +336,13 @@
     <button class="logout-btn" onclick="logoutAndRedirect()">Cerrar Sesión</button>
 
     <div class="container">
-        <h1>Ejecucion de Comandos</h1>
+        <h1>Ejecucion de ETLs</h1>
+
+        <!-- Navigation -->
+        <div class="nav-bar">
+            <a href="index.html" class="active">Ejecución de ETLs</a>
+            <a href="scheduler.html">Programaciones</a>
+        </div>
 
         <!-- ==================== DASHBOARD VIEW ==================== -->
         <div id="dashboardView">
@@ -363,7 +398,10 @@
         let pollingIntervals = {};
 
         // ========================
-        //  Check if current year-month is greater than fecha's year-month
+        //  Check if the month following fecha has already concluded.
+        //  The "Actualizar" button is only shown when current month is at
+        //  least 2 months ahead of fecha's month (i.e., the next month
+        //  after fecha has fully passed).
         // ========================
         function isCurrentYearMonthGreaterThanFecha(fechaValue) {
             if (!fechaValue) return false;
@@ -377,10 +415,12 @@
                 const now = new Date();
                 const currentYear = now.getFullYear();
                 const currentMonth = now.getMonth() + 1; // getMonth() is 0-based
-                // Compare as year-month integers to handle cross-year comparisons
+                // Compare as year-month integers to handle cross-year comparisons.
+                // Require currentYM >= fechaYM + 2 so that the month following
+                // fecha has already concluded (not just started).
                 const currentYM = currentYear * 12 + currentMonth;
                 const fechaYM = fechaYear * 12 + fechaMonth;
-                return currentYM > fechaYM;
+                return currentYM >= fechaYM + 2;
             }
 
             // Fallback: try parsing as full datetime
@@ -393,11 +433,14 @@
             const currentMonth = now.getMonth() + 1;
             const currentYM = currentYear * 12 + currentMonth;
             const fechaYM = fechaYear * 12 + fechaMonth;
-            return currentYM > fechaYM;
+            return currentYM >= fechaYM + 2;
         }
 
         // ========================
-        //  Check if current date is greater than fecha's date (day-level)
+        //  Check if the day following fecha has already concluded.
+        //  The "Actualizar" button is only shown when current date is at
+        //  least 2 days ahead of fecha's date (i.e., the next day after
+        //  fecha has fully passed).
         // ========================
         function isCurrentDateGreaterThanFecha(fechaValue) {
             if (!fechaValue) return false;
@@ -405,6 +448,7 @@
             const dateOnlyMatch = String(fechaValue).match(/^(\d{4})-(\d{2})-(\d{2})$/);
             if (dateOnlyMatch) {
                 const fechaDate = new Date(parseInt(dateOnlyMatch[1]), parseInt(dateOnlyMatch[2]) - 1, parseInt(dateOnlyMatch[3]));
+                fechaDate.setDate(fechaDate.getDate() + 1); // Next day must have concluded
                 const now = new Date();
                 now.setHours(0, 0, 0, 0);
                 return now > fechaDate;
@@ -413,6 +457,7 @@
             const d = new Date(fechaValue);
             if (isNaN(d.getTime())) return false;
             d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() + 1); // Next day must have concluded
             const now = new Date();
             now.setHours(0, 0, 0, 0);
             return now > d;
@@ -427,63 +472,77 @@
         ];
 
         // ========================
-        //  Get last day of a given month (year, month 1-12)
+        //  Parse year and month from a date string
+        //  Supports "YYYY-MM-DD", "YYYY/MM/DD", or full datetime strings.
+        //  Returns { year, month } or null on failure.
         // ========================
-        function getLastDayOfMonth(year, month) {
-            return new Date(year, month, 0).getDate();
+        function parseYearMonth(fechaValue) {
+            if (!fechaValue) return null;
+
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})/);
+            if (dateOnlyMatch) {
+                return {
+                    year: parseInt(dateOnlyMatch[1], 10),
+                    month: parseInt(dateOnlyMatch[2], 10)
+                };
+            }
+
+            const d = new Date(fechaValue);
+            if (isNaN(d.getTime())) return null;
+            return { year: d.getFullYear(), month: d.getMonth() + 1 };
         }
 
         // ========================
-        //  Build "Actualizar del 1 al X de <Month>" label from fecha
+        //  Parse full date (year, month, day) from a date string
+        //  Supports "YYYY-MM-DD", "YYYY/MM/DD", or full datetime strings.
+        //  Returns { year, month, day } or null on failure.
         // ========================
-        function getActualizarLabel(fechaValue) {
-            if (!fechaValue) return "Actualizar";
+        function parseFullDate(fechaValue) {
+            if (!fechaValue) return null;
 
-            // Parse DateOnly "YYYY-MM-DD" or "YYYY/MM/DD"
-            let year, month;
-            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})/);
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
             if (dateOnlyMatch) {
-                year = parseInt(dateOnlyMatch[1], 10);
-                month = parseInt(dateOnlyMatch[2], 10);
-            } else {
-                const d = new Date(fechaValue);
-                if (isNaN(d.getTime())) return "Actualizar";
-                year = d.getFullYear();
-                month = d.getMonth() + 1;
+                return {
+                    year: parseInt(dateOnlyMatch[1], 10),
+                    month: parseInt(dateOnlyMatch[2], 10),
+                    day: parseInt(dateOnlyMatch[3], 10)
+                };
             }
 
-            // Next month (wrap December -> January)
-            const nextMonth = month % 12 + 1;
-            const nextYear = month === 12 ? year + 1 : year;
+            const d = new Date(fechaValue);
+            if (isNaN(d.getTime())) return null;
+            return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+        }
 
-            const lastDay = getLastDayOfMonth(nextYear, nextMonth);
+        // ========================
+        //  Get the next month number (1-12), wrapping December -> January
+        // ========================
+        function getNextMonth(month) {
+            return month % 12 + 1;
+        }
+
+        // ========================
+        //  Build "Actualizar [MES]" label from fecha (month-based codes)
+        // ========================
+        function getActualizarLabel(fechaValue) {
+            const parsed = parseYearMonth(fechaValue);
+            if (!parsed) return "Actualizar";
+
+            const nextMonth = getNextMonth(parsed.month);
             const monthName = spanishMonths[nextMonth - 1];
 
-            return `Actualizar del 1 al ${lastDay} de ${monthName}`;
+            return `Actualizar ${monthName}`;
         }
 
         // ========================
         //  Build "Actualizar [DIA] de <Month>" label for day-based codes
         // ========================
         function getActualizarLabelDayBased(fechaValue) {
-            if (!fechaValue) return "Actualizar";
-
-            let year, month, day;
-            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
-            if (dateOnlyMatch) {
-                year = parseInt(dateOnlyMatch[1], 10);
-                month = parseInt(dateOnlyMatch[2], 10);
-                day = parseInt(dateOnlyMatch[3], 10);
-            } else {
-                const d = new Date(fechaValue);
-                if (isNaN(d.getTime())) return "Actualizar";
-                year = d.getFullYear();
-                month = d.getMonth() + 1;
-                day = d.getDate();
-            }
+            const parsed = parseFullDate(fechaValue);
+            if (!parsed) return "Actualizar";
 
             // Next day
-            const nextDate = new Date(year, month - 1, day + 1);
+            const nextDate = new Date(parsed.year, parsed.month - 1, parsed.day + 1);
             const nextDay = nextDate.getDate();
             const nextMonth = nextDate.getMonth() + 1;
             const monthName = spanishMonths[nextMonth - 1];
@@ -492,26 +551,13 @@
         }
 
         // ========================
-        //  Build "Reprocesar <Month>" label from fecha
+        //  Build "Reprocesar [MES]" label from fecha (month-based codes)
         // ========================
         function getReprocesarLabel(fechaValue) {
-            if (!fechaValue) return "Reprocesar";
+            const parsed = parseYearMonth(fechaValue);
+            if (!parsed) return "Reprocesar";
 
-            let year, month;
-            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})/);
-            if (dateOnlyMatch) {
-                year = parseInt(dateOnlyMatch[1], 10);
-                month = parseInt(dateOnlyMatch[2], 10);
-            } else {
-                const d = new Date(fechaValue);
-                if (isNaN(d.getTime())) return "Reprocesar";
-                year = d.getFullYear();
-                month = d.getMonth() + 1;
-            }
-
-            // Next month (wrap December -> January)
-            const nextMonth = month % 12 + 1;
-            const monthName = spanishMonths[nextMonth - 1];
+            const monthName = spanishMonths[parsed.month - 1];
 
             return `Reprocesar ${monthName}`;
         }
@@ -520,29 +566,12 @@
         //  Build "Reprocesar [DIA] de <Month>" label for day-based codes
         // ========================
         function getReprocesarLabelDayBased(fechaValue) {
-            if (!fechaValue) return "Reprocesar";
+            const parsed = parseFullDate(fechaValue);
+            if (!parsed) return "Reprocesar";
 
-            let year, month, day;
-            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
-            if (dateOnlyMatch) {
-                year = parseInt(dateOnlyMatch[1], 10);
-                month = parseInt(dateOnlyMatch[2], 10);
-                day = parseInt(dateOnlyMatch[3], 10);
-            } else {
-                const d = new Date(fechaValue);
-                if (isNaN(d.getTime())) return "Reprocesar";
-                year = d.getFullYear();
-                month = d.getMonth() + 1;
-                day = d.getDate();
-            }
+            const monthName = spanishMonths[parsed.month - 1];
 
-            // Next day
-            const nextDate = new Date(year, month - 1, day + 1);
-            const nextDay = nextDate.getDate();
-            const nextMonth = nextDate.getMonth() + 1;
-            const monthName = spanishMonths[nextMonth - 1];
-
-            return `Reprocesar ${nextDay} de ${monthName}`;
+            return `Reprocesar ${parsed.day} de ${monthName}`;
         }
 
         // ========================
@@ -733,15 +762,13 @@
                     actionWrapper.appendChild(actualizarBtn);
                 }
 
-                if (row.estadoEjecucion === "EXITOSO" || row.estadoEjecucion === "FALLIDO") {
-                    const repDocBtn = document.createElement("button");
-                    repDocBtn.className = "btn btn-reprocesar";
-                    repDocBtn.textContent = currentIsDayBased
-                        ? getReprocesarLabelDayBased(row.fechadatos)
-                        : getReprocesarLabel(row.fechadatos);
-                    repDocBtn.onclick = () => executeAction("Reprocesar", row);
-                    actionWrapper.appendChild(repDocBtn);
-                }
+                const repDocBtn = document.createElement("button");
+                repDocBtn.className = "btn btn-reprocesar";
+                repDocBtn.textContent = currentIsDayBased
+                    ? getReprocesarLabelDayBased(row.fechadatos)
+                    : getReprocesarLabel(row.fechadatos);
+                repDocBtn.onclick = () => executeAction("Reprocesar", row);
+                actionWrapper.appendChild(repDocBtn);
 
                 actionsCell.appendChild(actionWrapper);
                 tr.appendChild(actionsCell);
@@ -754,9 +781,6 @@
         // ========================
         async function executeAction(action, row) {
             const codEnvio = row.codEnvio;
-
-            // Disable buttons for this row
-            disableButtonsForRow(codEnvio);
 
             try {
                 const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/execute`, {
@@ -784,7 +808,6 @@
 
             } catch (error) {
                 showToast(`Error: ${error.message}`, "error");
-                enableButtonsForRow(codEnvio);
             }
         }
 
@@ -819,8 +842,6 @@
                     if (item.status === "EXITOSO" || item.status === "FALLIDO") {
                         clearInterval(interval);
                         delete pollingIntervals[historyId];
-                        enableButtonsForRow(codEnvio);
-                        addReprocesarButton(codEnvio, fechadatos);
 
                         if (item.status === "EXITOSO") {
                             showToast("Ejecución completada con éxito.", "success");
@@ -914,58 +935,6 @@
             }
         }
 
-        // ========================
-        //  Enable/disable buttons for a row
-        // ========================
-        function disableButtonsForRow(codEnvio) {
-            // Simple approach: disable all action buttons temporarily
-            // In a more complex app, you'd track per-row state
-        }
-
-        function enableButtonsForRow(codEnvio) {
-            // Re-enable buttons
-        }
-
-        // ========================
-        //  Add Reprocesar button after polling completes
-        // ========================
-        function addReprocesarButton(codEnvio, fechadatos) {
-            const statusEl = document.getElementById(`status-${codEnvio}`);
-            if (!statusEl) return;
-
-            // Navigate from status element to the row
-            const statusCell = statusEl.parentElement;
-            const tr = statusCell.parentElement;
-            if (!tr) return;
-
-            // Extract tipoEntidad from the first <td> of the row
-            const tipoEntidad = tr.querySelector("td:first-child")?.textContent || "";
-
-            const actionsCell = tr.querySelector("td:last-child");
-            if (!actionsCell) return;
-
-            const actionWrapper = actionsCell.querySelector(".action-buttons");
-            if (!actionWrapper) return;
-
-            // Avoid adding duplicate button
-            if (actionWrapper.querySelector(".btn-reprocesar")) return;
-
-            const repDocBtn = document.createElement("button");
-            repDocBtn.className = "btn btn-reprocesar";
-            repDocBtn.textContent = currentIsDayBased
-                ? getReprocesarLabelDayBased(fechadatos)
-                : getReprocesarLabel(fechadatos);
-
-            // Build a row-like object for executeAction
-            const rowData = {
-                tipoEntidad: tipoEntidad,
-                codEnvio: codEnvio,
-                fechadatos: fechadatos
-            };
-            repDocBtn.onclick = () => executeAction("Reprocesar", rowData);
-
-            actionWrapper.appendChild(repDocBtn);
-        }
 
         // ========================
         //  Toast notification

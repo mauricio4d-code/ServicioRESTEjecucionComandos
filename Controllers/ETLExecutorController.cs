@@ -18,7 +18,7 @@ namespace ServicioRESTEjecucionComandos.Controllers;
 [Authorize]
 public class ETLExecutorController : ControllerBase
 {
-    private readonly ExecutionQueue _executionQueue;
+    private readonly EtlJobService _etlJobService;
     private readonly ETLExecutionHistoryRepository _historyRepo;
     private readonly ServiceDbContext _serviceDbContext;
     private readonly string[] _dailyCodes;
@@ -27,12 +27,12 @@ public class ETLExecutorController : ControllerBase
     /// Initializes a new instance of ETLExecutorController.
     /// </summary>
     public ETLExecutorController(
-        ExecutionQueue executionQueue,
+        EtlJobService etlJobService,
         ETLExecutionHistoryRepository historyRepo,
         ServiceDbContext serviceDbContext,
         IConfiguration configuration)
     {
-        _executionQueue = executionQueue;
+        _etlJobService = etlJobService;
         _historyRepo = historyRepo;
         _serviceDbContext = serviceDbContext;
         _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
@@ -143,7 +143,6 @@ public class ETLExecutorController : ControllerBase
             return BadRequest(new { error = "El parámetro 'codigo' es requerido." });
         }
 
-        // Create ETLExecutionHistory record with PENDIENTE status
         var fechaDatos = request.FechaDatos ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
         var triggerType = request.Action?.ToUpperInvariant() switch
@@ -153,56 +152,19 @@ public class ETLExecutorController : ControllerBase
             _ => "MANUAL"
         };
 
-        var history = new ETLExecutionHistory
-        {
-            CodEnvio = request.CodEnvio ?? string.Empty,
-            TipoEntidad = request.TipoEntidad ?? string.Empty,
-            FechaDatos = fechaDatos,
-            Codigo = request.Codigo,
-            Status = "PENDIENTE",
-            TriggerType = triggerType
-        };
-        await _historyRepo.CreateAsync(history);
-
-        // Determine Start/End dates: day-based codes use the next day of FechaDatos, others use today
-        string startDate, endDate;
-        if (request.IsDayBased)
-        {
-            var nextDay = fechaDatos.AddDays(1);
-            var nextnextDay = fechaDatos.AddDays(2);
-            startDate = nextDay.ToString("yyyy-MM-dd");
-            endDate = nextnextDay.ToString("yyyy-MM-dd");
-        }
-        else
-        {
-            var nextMonth = fechaDatos.AddMonths(1);
-            startDate = new DateOnly(nextMonth.Year, nextMonth.Month, 1).ToString("yyyy-MM-dd");
-            var lastDay = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
-            endDate = new DateOnly(nextMonth.Year, nextMonth.Month, lastDay).ToString("yyyy-MM-dd");
-        }
-
-        // Create queue item linked to the ETLExecutionHistory
-        var queueItem = new ExecutionQueueItem
-        {
-            HistoryId = history.Id,
-            TipoEntidad = request.TipoEntidad ?? string.Empty,
-            FechaDatos = fechaDatos,
-            Code = request.Codigo,
-            Start = startDate,
-            End = endDate,
-            Codesend = request.CodEnvio ?? string.Empty,
-            Status = "PENDIENTE",
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var queueItemId = _executionQueue.Enqueue(queueItem);
+        // Delegate to EtlJobService which creates history record and enqueues via Hangfire
+        var historyId = await _etlJobService.EnqueueManualAsync(
+            request.TipoEntidad ?? string.Empty,
+            request.CodEnvio ?? string.Empty,
+            fechaDatos,
+            request.Codigo,
+            triggerType);
 
         return Ok(new
         {
-            QueueItemId = queueItemId,
-            HistoryId = history.Id,
-            Status = history.Status,
-            Message = $"Command enqueued successfully. Action: {request.Action}"
+            HistoryId = historyId,
+            Status = "PENDIENTE",
+            Message = $"Command enqueued successfully via Hangfire. Action: {request.Action}"
         });
     }
 

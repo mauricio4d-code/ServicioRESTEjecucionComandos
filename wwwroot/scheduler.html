@@ -111,6 +111,29 @@
             margin-bottom: 20px;
         }
 
+        /* Refresh button */
+        .btn-refresh {
+            background-color: #0078d4;
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-refresh:hover {
+            background-color: #106ebe;
+        }
+
+        .btn-refresh svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+
+        .btn-refresh.spinning svg {
+            animation: spin 0.8s linear infinite;
+        }
+
         /* Data table */
         .table-container {
             margin-top: 20px;
@@ -289,8 +312,54 @@
             box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
         }
 
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input[type="number"]:focus {
+            outline: none;
+            border-color: #0078d4;
+            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+        }
+
+        .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+            background-color: #fff;
+        }
+
+        .form-group select:focus {
+            outline: none;
+            border-color: #0078d4;
+            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+        }
+
         .form-group input[type="checkbox"] {
             margin-right: 8px;
+        }
+
+        .form-group input[type="time"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input[type="time"]:focus {
+            outline: none;
+            border-color: #0078d4;
+            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
         }
 
         .help-text {
@@ -298,6 +367,83 @@
             margin-top: 4px;
             font-size: 12px;
             color: #888888;
+        }
+
+        /* Frequency selector */
+        .frequency-section {
+            margin-bottom: 20px;
+        }
+
+        .frequency-section > label {
+            display: block;
+            margin-bottom: 10px;
+            color: #333333;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .frequency-options {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .frequency-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background-color: #ffffff;
+        }
+
+        .frequency-card:hover {
+            border-color: #0078d4;
+            background-color: #f0f7ff;
+        }
+
+        .frequency-card.selected {
+            border-color: #0078d4;
+            background-color: #e8f0fe;
+            box-shadow: 0 0 0 1px #0078d4;
+        }
+
+        .frequency-card svg {
+            width: 28px;
+            height: 28px;
+            margin-bottom: 8px;
+            fill: #666666;
+        }
+
+        .frequency-card.selected svg {
+            fill: #0078d4;
+        }
+
+        .frequency-card span {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #333333;
+        }
+
+        .frequency-card.selected span {
+            color: #0078d4;
+        }
+
+        /* Conditional fields container */
+        .frequency-fields {
+            display: none;
+        }
+
+        .frequency-fields.visible {
+            display: block;
+        }
+
+        .time-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
         }
 
         .modal-actions {
@@ -359,7 +505,12 @@
         <!-- Toolbar -->
         <div class="toolbar">
             <button class="btn btn-primary" onclick="openCreateModal()">Nueva Programación</button>
-            <button class="btn btn-secondary" onclick="loadSchedules()">Refrescar</button>
+            <button id="refreshBtn" class="btn btn-refresh" onclick="loadSchedules()">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                </svg>
+                Refrescar
+            </button>
         </div>
 
         <!-- Loading indicator -->
@@ -379,7 +530,7 @@
                         <th>Cod Envío</th>
                         <th>Tipo Entidad</th>
                         <th>Código</th>
-                        <th>Cron</th>
+                        <th>Frecuencia</th>
                         <th>Estado</th>
                         <th>Creado</th>
                         <th>Acciones</th>
@@ -409,10 +560,80 @@
                     <label for="codigo">Código</label>
                     <input type="text" id="codigo" required placeholder="Ej: SANTOS001" />
                 </div>
-                <div class="form-group">
-                    <label for="cronExpression">Expresión Cron</label>
-                    <input type="text" id="cronExpression" required placeholder="0 0 * * *" />
-                    <small class="help-text">Formato: Minuto Hora Día del mes Mes Día de la semana</small>
+                <div class="frequency-section">
+                    <label>Frecuencia</label>
+                    <div class="frequency-options">
+                        <div class="frequency-card" data-frequency="hourly" onclick="selectFrequency('hourly')">
+                            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
+                            <span>Cada hora</span>
+                        </div>
+                        <div class="frequency-card" data-frequency="daily" onclick="selectFrequency('daily')">
+                            <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+                            <span>Diario</span>
+                        </div>
+                        <div class="frequency-card" data-frequency="weekly" onclick="selectFrequency('weekly')">
+                            <svg viewBox="0 0 24 24"><path d="M5 13h14v-2H5v2zm0 4h14v-2H5v2zm0-8h14V7H5v2zm4-8h6v2H9V1z"/></svg>
+                            <span>Semanal</span>
+                        </div>
+                        <div class="frequency-card" data-frequency="monthly" onclick="selectFrequency('monthly')">
+                            <svg viewBox="0 0 24 24"><path d="M19 4H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V8h14v12zm-7-2h2v-2h-2v2zm0-4h2v-2h-2v2zm0-4h2V8h-2v2z"/></svg>
+                            <span>Mensual</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fields for "Cada Hora" -->
+                <div id="hourlyFields" class="frequency-fields">
+                    <div class="form-group">
+                        <label for="hourlyMinute">Minuto de ejecución</label>
+                        <input type="number" id="hourlyMinute" min="0" max="59" value="0" />
+                        <small class="help-text">La tarea se ejecutará cada hora en el minuto indicado</small>
+                    </div>
+                </div>
+
+                <!-- Fields for "Diario" -->
+                <div id="dailyFields" class="frequency-fields">
+                    <div class="form-group">
+                        <label for="dailyTime">Hora de ejecución</label>
+                        <input type="time" id="dailyTime" value="08:00" />
+                    </div>
+                </div>
+
+                <!-- Fields for "Semanal" -->
+                <div id="weeklyFields" class="frequency-fields">
+                    <div class="time-row">
+                        <div class="form-group">
+                            <label for="weeklyDay">Día de la semana</label>
+                            <select id="weeklyDay">
+                                <option value="1">Lunes</option>
+                                <option value="2">Martes</option>
+                                <option value="3">Miércoles</option>
+                                <option value="4">Jueves</option>
+                                <option value="5">Viernes</option>
+                                <option value="6">Sábado</option>
+                                <option value="0">Domingo</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="weeklyTime">Hora de ejecución</label>
+                            <input type="time" id="weeklyTime" value="08:00" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fields for "Mensual" -->
+                <div id="monthlyFields" class="frequency-fields">
+                    <div class="time-row">
+                        <div class="form-group">
+                            <label for="monthlyDay">Día del mes</label>
+                            <input type="number" id="monthlyDay" min="1" max="31" value="1" />
+                            <small class="help-text">Se ejecutará el último día del mes si el mes no tiene este día</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="monthlyTime">Hora de ejecución</label>
+                            <input type="time" id="monthlyTime" value="08:00" />
+                        </div>
+                    </div>
                 </div>
                 <div class="form-group" id="isActiveGroup" style="display: none;">
                     <label>

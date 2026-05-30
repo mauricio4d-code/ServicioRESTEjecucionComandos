@@ -2,6 +2,127 @@
 //  Global state
 // ========================
 let schedules = [];
+let selectedFrequency = null;
+
+// ========================
+//  Frequency selection handler
+// ========================
+function selectFrequency(freq) {
+    selectedFrequency = freq;
+
+    // Update card selection
+    document.querySelectorAll(".frequency-card").forEach(card => {
+        card.classList.toggle("selected", card.dataset.frequency === freq);
+    });
+
+    // Show/hide conditional fields
+    document.querySelectorAll(".frequency-fields").forEach(f => f.classList.remove("visible"));
+    const target = document.getElementById(`${freq}Fields`);
+    if (target) target.classList.add("visible");
+}
+
+// ========================
+//  Cron expression generator
+// ========================
+function generateCronExpression() {
+    if (!selectedFrequency) return null;
+
+    switch (selectedFrequency) {
+        case "hourly": {
+            const minute = document.getElementById("hourlyMinute").value || "0";
+            return `${minute} * * * *`;
+        }
+        case "daily": {
+            const time = document.getElementById("dailyTime").value || "08:00";
+            const [h, m] = time.split(":");
+            return `${m} ${h} * * *`;
+        }
+        case "weekly": {
+            const time = document.getElementById("weeklyTime").value || "08:00";
+            const day = document.getElementById("weeklyDay").value || "1";
+            const [h, m] = time.split(":");
+            return `${m} ${h} * * ${day}`;
+        }
+        case "monthly": {
+            const time = document.getElementById("monthlyTime").value || "08:00";
+            const day = document.getElementById("monthlyDay").value || "1";
+            const [h, m] = time.split(":");
+            return `${m} ${h} ${day} * *`;
+        }
+        default:
+            return null;
+    }
+}
+
+// ========================
+//  Cron expression parser (for edit mode)
+// ========================
+function parseCronExpression(cron) {
+    if (!cron) return { frequency: null, values: {} };
+
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length < 5) return { frequency: null, values: {} };
+
+    const [minute, hour, dom, month, dow] = parts;
+
+    // Cada Hora: minute * * * *
+    if (hour === "*" && dom === "*" && month === "*" && dow === "*") {
+        return { frequency: "hourly", values: { minute } };
+    }
+
+    // Semanal: minute hour * * dayOfWeek (dom is *, dow is not *)
+    if (dom === "*" && month === "*" && dow !== "*") {
+        const [h, m] = [hour, minute];
+        return {
+            frequency: "weekly",
+            values: { time: `${h}:${m}`, day: dow }
+        };
+    }
+
+    // Mensual: minute hour dayOfMonth * * (dow is *)
+    if (dow === "*" && dom !== "*" && month === "*") {
+        const [h, m] = [hour, minute];
+        return {
+            frequency: "monthly",
+            values: { time: `${h}:${m}`, day: dom }
+        };
+    }
+
+    // Diario: minute hour * * *
+    if (dom === "*" && month === "*" && dow === "*") {
+        const [h, m] = [hour, minute];
+        return {
+            frequency: "daily",
+            values: { time: `${h}:${m}` }
+        };
+    }
+
+    return { frequency: null, values: {} };
+}
+
+// ========================
+//  Get human-readable frequency label
+// ========================
+function getFrequencyLabel(cron) {
+    if (!cron) return "-";
+    const { frequency, values } = parseCronExpression(cron);
+
+    switch (frequency) {
+        case "hourly":
+            return `Cada hora (min ${values.minute || "0"})`;
+        case "daily":
+            return `Diario (${values.time || "00:00"})`;
+        case "weekly": {
+            const days = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+            const dayName = days[parseInt(values.day)] || "";
+            return `Semanal (${dayName} ${values.time || "00:00"})`;
+        }
+        case "monthly":
+            return `Mensual (Día ${values.day}, ${values.time || "00:00"})`;
+        default:
+            return cron; // fallback to raw cron if unparseable
+    }
+}
 
 // ========================
 //  Format date for display
@@ -76,10 +197,9 @@ function renderSchedulesTable(data) {
         codigoCell.textContent = schedule.codigo || "-";
         tr.appendChild(codigoCell);
 
-        // Cron Expression
+        // Frequency label (human-readable)
         const cronCell = document.createElement("td");
-        cronCell.textContent = schedule.cronExpression || "-";
-        cronCell.style.fontFamily = "monospace";
+        cronCell.textContent = getFrequencyLabel(schedule.cronExpression);
         tr.appendChild(cronCell);
 
         // IsActive status badge
@@ -137,9 +257,22 @@ function openCreateModal() {
     document.getElementById("codEnvio").value = "";
     document.getElementById("tipoEntidad").value = "";
     document.getElementById("codigo").value = "";
-    document.getElementById("cronExpression").value = "";
     document.getElementById("isActive").checked = true;
     document.getElementById("isActiveGroup").style.display = "none";
+
+    // Reset frequency selection
+    selectedFrequency = null;
+    document.querySelectorAll(".frequency-card").forEach(card => card.classList.remove("selected"));
+    document.querySelectorAll(".frequency-fields").forEach(f => f.classList.remove("visible"));
+
+    // Reset frequency field values to defaults
+    document.getElementById("hourlyMinute").value = "0";
+    document.getElementById("dailyTime").value = "08:00";
+    document.getElementById("weeklyDay").value = "1";
+    document.getElementById("weeklyTime").value = "08:00";
+    document.getElementById("monthlyDay").value = "1";
+    document.getElementById("monthlyTime").value = "08:00";
+
     document.getElementById("scheduleModal").style.display = "flex";
 }
 
@@ -152,9 +285,33 @@ function openEditModal(schedule) {
     document.getElementById("codEnvio").value = schedule.codEnvio;
     document.getElementById("tipoEntidad").value = schedule.tipoEntidad;
     document.getElementById("codigo").value = schedule.codigo;
-    document.getElementById("cronExpression").value = schedule.cronExpression;
     document.getElementById("isActive").checked = schedule.isActive;
     document.getElementById("isActiveGroup").style.display = "block";
+
+    // Parse existing cron expression and populate frequency UI
+    const parsed = parseCronExpression(schedule.cronExpression);
+
+    if (parsed.frequency) {
+        selectFrequency(parsed.frequency);
+
+        // Fill in the parsed values
+        if (parsed.values.minute !== undefined) {
+            document.getElementById("hourlyMinute").value = parsed.values.minute;
+        }
+        if (parsed.values.time) {
+            document.getElementById("dailyTime").value = parsed.values.time;
+            document.getElementById("weeklyTime").value = parsed.values.time;
+            document.getElementById("monthlyTime").value = parsed.values.time;
+        }
+        if (parsed.values.day !== undefined) {
+            if (parsed.frequency === "weekly") {
+                document.getElementById("weeklyDay").value = parsed.values.day;
+            } else if (parsed.frequency === "monthly") {
+                document.getElementById("monthlyDay").value = parsed.values.day;
+            }
+        }
+    }
+
     document.getElementById("scheduleModal").style.display = "flex";
 }
 
@@ -164,6 +321,11 @@ function openEditModal(schedule) {
 function closeModal() {
     document.getElementById("scheduleModal").style.display = "none";
     document.getElementById("scheduleForm").reset();
+
+    // Reset frequency state
+    selectedFrequency = null;
+    document.querySelectorAll(".frequency-card").forEach(card => card.classList.remove("selected"));
+    document.querySelectorAll(".frequency-fields").forEach(f => f.classList.remove("visible"));
 }
 
 // ========================
@@ -172,11 +334,22 @@ function closeModal() {
 async function saveSchedule(event) {
     event.preventDefault();
 
+    // Validate frequency selection
+    if (!selectedFrequency) {
+        showToast("Seleccione una frecuencia de ejecución", "error");
+        return;
+    }
+
+    const cronExpression = generateCronExpression();
+    if (!cronExpression) {
+        showToast("Error generando la expresión de programación", "error");
+        return;
+    }
+
     const id = document.getElementById("scheduleId").value;
     const codEnvio = document.getElementById("codEnvio").value.trim();
     const tipoEntidad = document.getElementById("tipoEntidad").value.trim();
     const codigo = document.getElementById("codigo").value.trim();
-    const cronExpression = document.getElementById("cronExpression").value.trim();
     const isActive = document.getElementById("isActive").checked;
 
     const saveBtn = document.getElementById("saveBtn");

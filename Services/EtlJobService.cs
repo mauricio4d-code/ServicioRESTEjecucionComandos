@@ -15,6 +15,7 @@ public class EtlJobService
     private readonly CommandExecutor _executor;
     private readonly ILogger<EtlJobService> _logger;
     private readonly string[] _dailyCodes;
+    private readonly SemaphoreSlim _semaphore;
 
     /// <summary>
     /// Initializes a new instance of EtlJobService.
@@ -29,6 +30,9 @@ public class EtlJobService
         _executor = executor;
         _logger = logger;
         _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
+        var maxParallel = configuration.GetValue<int>("QueueConfig:MaxParallelExecutions", 1);
+        _semaphore = new SemaphoreSlim(maxParallel, maxParallel);
+        _logger.LogInformation("EtlJobService initialized with MaxParallelExecutions = {MaxParallel}.", maxParallel);
     }
 
     /// <summary>
@@ -140,10 +144,18 @@ public class EtlJobService
     {
         _logger.LogInformation("Starting ETL job for HistoryId {HistoryId} (trigger: {TriggerType}).", historyId, triggerType);
 
-        ETLExecutionHistory? history = null;
-
+        bool slotAcquired = false;
         try
         {
+            // Wait for an execution slot before marking as EN PROCESO.
+            // This ensures at most MaxParallelExecutions items are ever in EN PROCESO state.
+            _logger.LogInformation("Waiting for execution slot for HistoryId {HistoryId}.", historyId);
+            await _semaphore.WaitAsync();
+            slotAcquired = true;
+            _logger.LogInformation("Acquired execution slot for HistoryId {HistoryId}.", historyId);
+
+            ETLExecutionHistory? history = null;
+
             // Load history record in a scope
             using (var scope = _scopeFactory.CreateScope())
             {
@@ -157,7 +169,7 @@ public class EtlJobService
                 return;
             }
 
-            // Update status to EN PROCESO
+            // Update status to EN PROCESO only after acquiring a slot
             await UpdateStatusInScopeAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
 
             // Determine Start/End dates based on TriggerType.
@@ -263,11 +275,22 @@ public class EtlJobService
         {
             _logger.LogError(ex, "Exception while executing ETL job {HistoryId}", historyId);
 
-            await UpdateStatusInScopeAsync(
-                historyId,
-                "FALLIDO",
-                error: ex.Message,
-                completedAt: DateTime.UtcNow);
+            if (slotAcquired)
+            {
+                await UpdateStatusInScopeAsync(
+                    historyId,
+                    "FALLIDO",
+                    error: ex.Message,
+                    completedAt: DateTime.UtcNow);
+            }
+        }
+        finally
+        {
+            if (slotAcquired)
+            {
+                _semaphore.Release();
+                _logger.LogInformation("Released execution slot after processing HistoryId {HistoryId}.", historyId);
+            }
         }
     }
 

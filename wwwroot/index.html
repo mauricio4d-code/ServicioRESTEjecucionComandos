@@ -206,6 +206,21 @@
             cursor: not-allowed;
         }
 
+        /* Row dimming for active executions */
+        tr.row-active-execution {
+            background-color: #fff3cd !important;
+            opacity: 0.75;
+        }
+
+        tr.row-active-execution:hover {
+            background-color: #ffeaa7 !important;
+        }
+
+        /* Disabled button tooltip hint */
+        .btn[disabled] {
+            position: relative;
+        }
+
         /* Status badge */
         .status-badge {
             display: inline-block;
@@ -799,6 +814,9 @@
             results.forEach(row => {
                 const tr = document.createElement("tr");
 
+                // Determine if this row has an active execution (PENDIENTE or EN PROCESO)
+                const isActiveExecution = row.estadoEjecucion === "PENDIENTE" || row.estadoEjecucion === "EN PROCESO";
+
                 const tipoEntidad = document.createElement("td");
                 tipoEntidad.textContent = row.tipoEntidad || "-";
                 tr.appendChild(tipoEntidad);
@@ -884,6 +902,12 @@
                         ? getActualizarLabelDayBased(row.fechadatos)
                         : getActualizarLabel(row.fechadatos);
                     actualizarBtn.onclick = () => executeAction("Actualizar", row);
+                    if (isActiveExecution) {
+                        actualizarBtn.disabled = true;
+                        actualizarBtn.title = row.estadoEjecucion === "PENDIENTE"
+                            ? "Ejecución pendiente. Espere a que concluya."
+                            : "Ejecución en proceso. Espere a que concluya.";
+                    }
                     actionWrapper.appendChild(actualizarBtn);
                 }
 
@@ -893,10 +917,22 @@
                     ? getReprocesarLabelDayBased(row.fechadatos)
                     : getReprocesarLabel(row.fechadatos);
                 repDocBtn.onclick = () => executeAction("Reprocesar", row);
+                if (isActiveExecution) {
+                    repDocBtn.disabled = true;
+                    repDocBtn.title = row.estadoEjecucion === "PENDIENTE"
+                        ? "Ejecución pendiente. Espere a que concluya."
+                        : "Ejecución en proceso. Espere a que concluya.";
+                }
                 actionWrapper.appendChild(repDocBtn);
 
                 actionsCell.appendChild(actionWrapper);
                 tr.appendChild(actionsCell);
+
+                // Apply visual indicator for active executions
+                if (isActiveExecution) {
+                    tr.classList.add("row-active-execution");
+                }
+
                 tbody.appendChild(tr);
             });
         }
@@ -1071,6 +1107,12 @@
                 const rowData = { codEnvio, fechadatos: newFechaDatos };
                 existingReprocesarBtn.onclick = () => executeAction("Reprocesar", rowData);
             }
+
+            // Preserve disabled state based on current execution status
+            const statusTextEl = document.getElementById(`statusText-${codEnvio}`);
+            if (statusTextEl) {
+                updateRowVisualState(codEnvio, statusTextEl.textContent);
+            }
         }
 
         // ========================
@@ -1105,6 +1147,40 @@
                 case "EXITOSO": return "status-success";
                 case "FALLIDO": return "status-failed";
                 default: return "status-pending";
+            }
+        }
+
+        // ========================
+        //  Update row visual state (disable buttons + dim row) based on status
+        // ========================
+        function updateRowVisualState(codEnvio, status) {
+            const statusEl = document.getElementById(`status-${codEnvio}`);
+            if (!statusEl) return;
+
+            const row = statusEl.closest("tr");
+            if (!row) return;
+
+            const actionWrapper = row.querySelector(".action-buttons");
+            const isActive = status === "PENDIENTE" || status === "EN PROCESO";
+
+            if (actionWrapper) {
+                const buttons = actionWrapper.querySelectorAll("button");
+                buttons.forEach(btn => {
+                    btn.disabled = isActive;
+                    if (isActive) {
+                        btn.title = status === "PENDIENTE"
+                            ? "Ejecución pendiente. Espere a que concluya."
+                            : "Ejecución en proceso. Espere a que concluya.";
+                    } else {
+                        btn.title = "";
+                    }
+                });
+            }
+
+            if (isActive) {
+                row.classList.add("row-active-execution");
+            } else {
+                row.classList.remove("row-active-execution");
             }
         }
 
@@ -1149,6 +1225,9 @@
                 tooltipEl.textContent = "";
                 statusEl.classList.remove("has-tooltip");
             }
+
+            // Update row visual state (disable buttons + dim row) based on new status
+            updateRowVisualState(codEnvio, status);
         }
 
 

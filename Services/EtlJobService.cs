@@ -51,21 +51,34 @@ public class EtlJobService
         string codigo,
         string triggerType = "MANUAL")
     {
-        // Create ETLExecutionHistory record with PENDIENTE status
-        var history = new ETLExecutionHistory
-        {
-            CodEnvio = codEnvio,
-            TipoEntidad = tipoEntidad,
-            FechaDatos = fechaDatos,
-            Codigo = codigo,
-            Status = "PENDIENTE",
-            TriggerType = triggerType
-        };
-
         Guid historyId;
         using (var scope = _scopeFactory.CreateScope())
         {
             var historyRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
+
+            // Prevent duplicate active executions for the same CodEnvio + Codigo combination.
+            // If there's already a PENDIENTE or EN PROCESO record, return its ID instead of creating a new one.
+            var existing = await historyRepo.GetActiveExecutionAsync(codEnvio, codigo);
+            if (existing != null)
+            {
+                _logger.LogWarning(
+                    "Duplicate enqueue prevented for CodEnvio={CodEnvio}, Codigo={Codigo}. " +
+                    "Returning existing HistoryId={HistoryId} with status {Status}.",
+                    codEnvio, codigo, existing.Id, existing.Status);
+                return existing.Id;
+            }
+
+            // Create ETLExecutionHistory record with PENDIENTE status
+            var history = new ETLExecutionHistory
+            {
+                CodEnvio = codEnvio,
+                TipoEntidad = tipoEntidad,
+                FechaDatos = fechaDatos,
+                Codigo = codigo,
+                Status = "PENDIENTE",
+                TriggerType = triggerType
+            };
+
             await historyRepo.CreateAsync(history);
             historyId = history.Id;
         }

@@ -95,27 +95,64 @@ public class ETLExecutorController : ControllerBase
                             ""Error"" AS ""error""
                         FROM hist_etl_execution
                         ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""CompletedAt"" DESC NULLS LAST
+                    ),
+                    seguimiento AS (
+                        SELECT
+                            s.tipoentidad AS ""TipoEntidad"",
+                            e.cod_envio AS ""CodEnvio"",
+                            s.fechadatos AS ""FechaDatos"",
+                            le.estado_ejecucion AS ""EstadoEjecucion"",
+                            le.trigger_type AS ""TriggerType"",
+                            le.ultima_fecha_ejecucion AS ""UltimaFechaEjecucion"",
+                            le.""output"" AS ""Output"",
+                            le.""error"" AS ""Error""
+                        FROM dim_entidad_asfi e
+                        JOIN dtx_seguimiento s
+                            ON s.cod_envio = e.cod_envio
+                        LEFT JOIN latest_exec le
+                            ON le.""CodEnvio"" = e.cod_envio
+                            AND le.""TipoEntidad"" = s.tipoentidad
+                            AND le.""FechaDatos"" = s.fechadatos
+                        WHERE e.cod_envio IS NOT NULL
+                            AND e.cod_envio <> ''
+                            AND s.codigo = {0}
+                    ),
+                    ejecuciones_pendientes AS (
+                        SELECT
+                            le.""TipoEntidad"",
+                            le.""CodEnvio"",
+                            le.""FechaDatos"",
+                            le.estado_ejecucion AS ""EstadoEjecucion"",
+                            le.trigger_type AS ""TriggerType"",
+                            le.ultima_fecha_ejecucion AS ""UltimaFechaEjecucion"",
+                            le.""output"" AS ""Output"",
+                            le.""error"" AS ""Error""
+                        FROM latest_exec le
+                        WHERE NOT EXISTS (
+                            SELECT 1
+                            FROM dtx_seguimiento s
+                            WHERE s.cod_envio = le.""CodEnvio""
+                              AND s.tipoentidad = le.""TipoEntidad""
+                              AND s.fechadatos = le.""FechaDatos""
+                              AND s.codigo = {0}
+                        )
+                    ),
+                    union_data AS (
+                        SELECT * FROM seguimiento
+                        UNION ALL
+                        SELECT * FROM ejecuciones_pendientes
                     )
-                    SELECT DISTINCT ON (e.cod_envio)
-                        s.tipoentidad AS ""TipoEntidad"",
-                        e.cod_envio AS ""CodEnvio"",
-                        s.fechadatos AS ""FechaDatos"",
-                        le.estado_ejecucion AS ""EstadoEjecucion"",
-                        le.trigger_type AS ""TriggerType"",
-                        le.ultima_fecha_ejecucion AS ""UltimaFechaEjecucion"",
-                        le.""output"" AS ""Output"",
-                        le.""error"" AS ""Error""
-                    FROM dim_entidad_asfi e
-                    JOIN dtx_seguimiento s
-                        ON s.cod_envio = e.cod_envio
-                    LEFT JOIN latest_exec le
-                        ON le.""CodEnvio"" = e.cod_envio
-                        AND le.""TipoEntidad"" = s.tipoentidad
-                        AND le.""FechaDatos"" = s.fechadatos
-                    WHERE e.cod_envio IS NOT NULL
-                        AND e.cod_envio <> ''
-                        AND s.codigo = {0}
-                    ORDER BY e.cod_envio, s.fechadatos DESC",
+                    SELECT DISTINCT ON (""CodEnvio"")
+                        ""TipoEntidad"",
+                        ""CodEnvio"",
+                        ""FechaDatos"",
+                        ""EstadoEjecucion"",
+                        ""TriggerType"",
+                        ""UltimaFechaEjecucion"",
+                        ""Output"",
+                        ""Error""
+                    FROM union_data
+                    ORDER BY ""CodEnvio"", ""FechaDatos"" DESC",
                     codigo)
                 .ToListAsync();
 
@@ -152,11 +189,34 @@ public class ETLExecutorController : ControllerBase
             _ => "MANUAL"
         };
 
+        // For "Actualizar" (MANUAL) action, compute the target period so the history record
+        // stores the date that matches what the external ETL will create in dtx_seguimiento.
+        // For "Reprocesar" (REPROCESO), keep the original FechaDatos unchanged.
+        bool isDayBased = _dailyCodes.Contains(request.Codigo, StringComparer.OrdinalIgnoreCase);
+        bool isActualizar = triggerType == "MANUAL";
+        DateOnly targetFecha;
+
+        if (isActualizar)
+        {
+            if (isDayBased)
+            {
+                targetFecha = fechaDatos.AddDays(1);
+            }
+            else
+            {
+                targetFecha = fechaDatos.AddMonths(1);
+            }
+        }
+        else
+        {
+            targetFecha = fechaDatos;
+        }
+
         // Delegate to EtlJobService which creates history record and enqueues via Hangfire
         var historyId = await _etlJobService.EnqueueManualAsync(
             request.TipoEntidad ?? string.Empty,
             request.CodEnvio ?? string.Empty,
-            fechaDatos,
+            targetFecha,
             request.Codigo,
             triggerType);
 

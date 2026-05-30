@@ -329,6 +329,41 @@
         .toast-error {
             background-color: #d32f2f;
         }
+
+        /* Refresh button */
+        .btn-refresh {
+            background-color: #0078d4;
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-refresh:hover {
+            background-color: #106ebe;
+        }
+
+        .btn-refresh svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+
+        .btn-refresh.spinning svg {
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Toolbar row for refresh button */
+        .toolbar-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 16px;
+        }
     </style>
 </head>
 
@@ -347,6 +382,16 @@
         <!-- ==================== DASHBOARD VIEW ==================== -->
         <div id="dashboardView">
             <p class="user-info">Bienvenido, <span id="userName"></span></p>
+
+            <!-- Toolbar with refresh button -->
+            <div class="toolbar-row">
+                <button id="refreshBtn" class="btn btn-refresh" onclick="manualRefresh()" disabled>
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                    </svg>
+                    Refrescar
+                </button>
+            </div>
 
             <!-- Base Datos selector -->
             <div class="select-container">
@@ -396,6 +441,83 @@
         let currentCodigo = "";
         let currentIsDayBased = false;
         let pollingIntervals = {};
+        let pollingState = {}; // Maps historyId -> { codEnvio, fechadatos } for restart after refresh
+        let tableRefreshInProgress = false;
+
+        // ========================
+        //  Stop all active polling intervals
+        // ========================
+        function stopAllPolling() {
+            Object.keys(pollingIntervals).forEach(key => {
+                clearInterval(pollingIntervals[key]);
+            });
+            pollingIntervals = {};
+        }
+
+        // ========================
+        //  Manual refresh - full table re-render
+        //  Uses refreshInProgress flag to prevent race conditions with polling.
+        // ========================
+        async function manualRefresh() {
+            if (!currentCodigo) return;
+
+            const refreshBtn = document.getElementById("refreshBtn");
+            refreshBtn.disabled = true;
+            refreshBtn.classList.add("spinning");
+
+            const loading = document.getElementById("loading");
+            const tableContainer = document.getElementById("tableContainer");
+            const errorMessage = document.getElementById("errorMessage");
+
+            errorMessage.textContent = "";
+            loading.classList.add("visible");
+            tableContainer.style.display = "none";
+
+            // Set flag to block polling from firing concurrently
+            tableRefreshInProgress = true;
+
+            // Save active polling state before clearing intervals
+            // so we can restart polling for in-progress items after refresh
+            const savedPollingState = { ...pollingState };
+
+            // Clear all existing polling intervals to prevent stale callbacks
+            // from interfering with the freshly rendered table DOM
+            stopAllPolling();
+
+            try {
+                const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/query-results?codigo=${encodeURIComponent(currentCodigo)}`);
+
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                const data = await res.json();
+                // Full re-render (not partial update)
+                renderResultsTable(data);
+                tableContainer.style.display = "block";
+
+                // Restart polling for items that were still in progress
+                for (const [historyId, state] of Object.entries(savedPollingState)) {
+                    try {
+                        const statusRes = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
+                        if (statusRes.ok) {
+                            const statusItem = await statusRes.json();
+                            if (statusItem.status === "PENDIENTE" || statusItem.status === "EN PROCESO") {
+                                startPolling(historyId, state.codEnvio, state.fechadatos);
+                            }
+                        }
+                    } catch {
+                        // If status check fails, skip restarting polling for this item
+                    }
+                }
+            } catch (error) {
+                errorMessage.textContent = `Error refrescando datos: ${error.message}`;
+            } finally {
+                loading.classList.remove("visible");
+                refreshBtn.disabled = false;
+                refreshBtn.classList.remove("spinning");
+                // Release the flag so polling can resume
+                tableRefreshInProgress = false;
+            }
+        }
 
         // ========================
         //  Check if the month following fecha has already concluded.
@@ -637,6 +759,7 @@
 
             if (!codigo) {
                 tableContainer.style.display = "none";
+                document.getElementById("refreshBtn").disabled = true;
                 return;
             }
 
@@ -657,6 +780,7 @@
                 errorMessage.textContent = `Error cargando resultados: ${error.message}`;
             } finally {
                 loading.classList.remove("visible");
+                document.getElementById("refreshBtn").disabled = false;
             }
         }
 
@@ -684,6 +808,7 @@
                 tr.appendChild(codEnvio);
 
                 const fechadatos = document.createElement("td");
+                fechadatos.id = `fecha-${row.codEnvio}`;
                 fechadatos.textContent = row.fechadatos ? formatDateYYYYMMDD(row.fechadatos) : "-";
                 tr.appendChild(fechadatos);
 
@@ -819,7 +944,13 @@
                 clearInterval(pollingIntervals[historyId]);
             }
 
+            // Store state so polling can be restarted after a manual refresh
+            pollingState[historyId] = { codEnvio, fechadatos };
+
             const interval = setInterval(async () => {
+                // Guard: skip this cycle if manual refresh is in progress
+                if (tableRefreshInProgress) return;
+
                 try {
                     const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
 
@@ -836,12 +967,21 @@
                     }
 
                     updateStatusBadge(codEnvio, item.status, tooltipContent);
+                    updateFechaCell(codEnvio, item.fechaDatos);
                     updateTriggerType(codEnvio, item.triggerType);
+
+                    // Update action buttons if fechaDatos changed
+                    if (item.fechaDatos && item.fechaDatos !== fechadatos) {
+                        fechadatos = item.fechaDatos;
+                        pollingState[historyId] = { codEnvio, fechadatos };
+                        updateActionButtons(codEnvio, item.fechaDatos);
+                    }
 
                     // Stop polling when terminal status reached
                     if (item.status === "EXITOSO" || item.status === "FALLIDO") {
                         clearInterval(interval);
                         delete pollingIntervals[historyId];
+                        delete pollingState[historyId];
 
                         if (item.status === "EXITOSO") {
                             showToast("Ejecución completada con éxito.", "success");
@@ -855,6 +995,82 @@
             }, 3000);
 
             pollingIntervals[historyId] = interval;
+        }
+
+        // ========================
+        //  Update Fecha cell in table
+        // ========================
+        function updateFechaCell(codEnvio, fechaDatos) {
+            const fechaEl = document.getElementById(`fecha-${codEnvio}`);
+            if (!fechaEl) return;
+            fechaEl.textContent = fechaDatos ? formatDateYYYYMMDD(fechaDatos) : "-";
+        }
+
+        // ========================
+        //  Update action buttons in table row when fechaDatos changes
+        // ========================
+        function updateActionButtons(codEnvio, newFechaDatos) {
+            const fechaEl = document.getElementById(`fecha-${codEnvio}`);
+            if (!fechaEl) return;
+
+            // Traverse up to the <tr> row, then find the .action-buttons container
+            const row = fechaEl.closest("tr");
+            if (!row) return;
+
+            const actionWrapper = row.querySelector(".action-buttons");
+            if (!actionWrapper) return;
+
+            // Determine if Actualizar is eligible for the new date
+            const canActualizar = currentIsDayBased
+                ? isCurrentDateGreaterThanFecha(newFechaDatos)
+                : isCurrentYearMonthGreaterThanFecha(newFechaDatos);
+
+            // Get existing Actualizar button (first button in wrapper)
+            const existingActualizarBtn = actionWrapper.querySelector(".btn-actualizar");
+            const existingReprocesarBtn = actionWrapper.querySelector(".btn-reprocesar");
+
+            if (canActualizar) {
+                if (existingActualizarBtn) {
+                    // Update the label
+                    existingActualizarBtn.textContent = currentIsDayBased
+                        ? getActualizarLabelDayBased(newFechaDatos)
+                        : getActualizarLabel(newFechaDatos);
+                    // Update the click handler to use the new fecha
+                    const rowData = { codEnvio, fechadatos: newFechaDatos };
+                    existingActualizarBtn.onclick = () => executeAction("Actualizar", rowData);
+                } else {
+                    // Create the Actualizar button (it wasn't shown before)
+                    const actualizarBtn = document.createElement("button");
+                    actualizarBtn.className = "btn btn-actualizar";
+                    actualizarBtn.textContent = currentIsDayBased
+                        ? getActualizarLabelDayBased(newFechaDatos)
+                        : getActualizarLabel(newFechaDatos);
+                    // Store the row data for the click handler
+                    const rowData = { codEnvio, fechadatos: newFechaDatos };
+                    actualizarBtn.onclick = () => executeAction("Actualizar", rowData);
+                    // Insert before the Reprocesar button
+                    if (existingReprocesarBtn) {
+                        actionWrapper.insertBefore(actualizarBtn, existingReprocesarBtn);
+                    } else {
+                        actionWrapper.appendChild(actualizarBtn);
+                    }
+                }
+            } else {
+                // Remove Actualizar button if it exists and is no longer eligible
+                if (existingActualizarBtn) {
+                    existingActualizarBtn.remove();
+                }
+            }
+
+            // Always update the Reprocesar button label
+            if (existingReprocesarBtn) {
+                existingReprocesarBtn.textContent = currentIsDayBased
+                    ? getReprocesarLabelDayBased(newFechaDatos)
+                    : getReprocesarLabel(newFechaDatos);
+                // Update the click handler to use the new fecha
+                const rowData = { codEnvio, fechadatos: newFechaDatos };
+                existingReprocesarBtn.onclick = () => executeAction("Reprocesar", rowData);
+            }
         }
 
         // ========================

@@ -161,11 +161,14 @@ public class EtlJobService
             await UpdateStatusInScopeAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
 
             // Determine Start/End dates based on TriggerType.
-            // REPROCESO uses the same period as FechaDatos.
-            // MANUAL and PROGRAMADO use the next period after FechaDatos.
+            // For MANUAL (Actualizar): FechaDatos already holds the target period
+            //   (computed by the controller before enqueuing), so use it directly.
+            // For REPROCESO: uses the same period as FechaDatos.
+            // For PROGRAMADO: advances to the next period after FechaDatos.
             string startDate, endDate;
             bool isDayBased = _dailyCodes.Contains(history.Codigo, StringComparer.OrdinalIgnoreCase);
             bool isReproceso = history.TriggerType?.Equals("REPROCESO", StringComparison.OrdinalIgnoreCase) == true;
+            bool isProgramado = history.TriggerType?.Equals("PROGRAMADO", StringComparison.OrdinalIgnoreCase) == true;
 
             if (isDayBased)
             {
@@ -175,13 +178,19 @@ public class EtlJobService
                     startDate = history.FechaDatos.ToString("yyyy-MM-dd");
                     endDate = history.FechaDatos.AddDays(1).ToString("yyyy-MM-dd");
                 }
-                else
+                else if (isProgramado)
                 {
-                    // Actualizar/Programado: next day period
+                    // Programado: next day period (FechaDatos = today, target = tomorrow)
                     var nextDay = history.FechaDatos.AddDays(1);
                     var nextNextDay = history.FechaDatos.AddDays(2);
                     startDate = nextDay.ToString("yyyy-MM-dd");
                     endDate = nextNextDay.ToString("yyyy-MM-dd");
+                }
+                else
+                {
+                    // MANUAL (Actualizar): FechaDatos is already the target day
+                    startDate = history.FechaDatos.ToString("yyyy-MM-dd");
+                    endDate = history.FechaDatos.AddDays(1).ToString("yyyy-MM-dd");
                 }
             }
             else
@@ -193,13 +202,20 @@ public class EtlJobService
                     var lastDay = DateTime.DaysInMonth(history.FechaDatos.Year, history.FechaDatos.Month);
                     endDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, lastDay).ToString("yyyy-MM-dd");
                 }
-                else
+                else if (isProgramado)
                 {
-                    // Actualizar/Programado: next month period
+                    // Programado: next month period (FechaDatos = today, target = next month)
                     var nextMonth = history.FechaDatos.AddMonths(1);
                     startDate = new DateOnly(nextMonth.Year, nextMonth.Month, 1).ToString("yyyy-MM-dd");
                     var lastDay = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
                     endDate = new DateOnly(nextMonth.Year, nextMonth.Month, lastDay).ToString("yyyy-MM-dd");
+                }
+                else
+                {
+                    // MANUAL (Actualizar): FechaDatos is already the target month
+                    startDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, 1).ToString("yyyy-MM-dd");
+                    var lastDay = DateTime.DaysInMonth(history.FechaDatos.Year, history.FechaDatos.Month);
+                    endDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, lastDay).ToString("yyyy-MM-dd");
                 }
             }
 

@@ -18,7 +18,7 @@ namespace ServicioRESTEjecucionComandos.Controllers;
 [Authorize]
 public class ETLExecutorController : ControllerBase
 {
-    private readonly ExecutionQueue _executionQueue;
+    private readonly EtlJobService _etlJobService;
     private readonly ETLExecutionHistoryRepository _historyRepo;
     private readonly ServiceDbContext _serviceDbContext;
     private readonly string[] _dailyCodes;
@@ -27,12 +27,12 @@ public class ETLExecutorController : ControllerBase
     /// Initializes a new instance of ETLExecutorController.
     /// </summary>
     public ETLExecutorController(
-        ExecutionQueue executionQueue,
+        EtlJobService etlJobService,
         ETLExecutionHistoryRepository historyRepo,
         ServiceDbContext serviceDbContext,
         IConfiguration configuration)
     {
-        _executionQueue = executionQueue;
+        _etlJobService = etlJobService;
         _historyRepo = historyRepo;
         _serviceDbContext = serviceDbContext;
         _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
@@ -95,27 +95,64 @@ public class ETLExecutorController : ControllerBase
                             ""Error"" AS ""error""
                         FROM hist_etl_execution
                         ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""CompletedAt"" DESC NULLS LAST
+                    ),
+                    seguimiento AS (
+                        SELECT
+                            s.tipoentidad AS ""TipoEntidad"",
+                            e.cod_envio AS ""CodEnvio"",
+                            s.fechadatos AS ""FechaDatos"",
+                            le.estado_ejecucion AS ""EstadoEjecucion"",
+                            le.trigger_type AS ""TriggerType"",
+                            le.ultima_fecha_ejecucion AS ""UltimaFechaEjecucion"",
+                            le.""output"" AS ""Output"",
+                            le.""error"" AS ""Error""
+                        FROM dim_entidad_asfi e
+                        JOIN dtx_seguimiento s
+                            ON s.cod_envio = e.cod_envio
+                        LEFT JOIN latest_exec le
+                            ON le.""CodEnvio"" = e.cod_envio
+                            AND le.""TipoEntidad"" = s.tipoentidad
+                            AND le.""FechaDatos"" = s.fechadatos
+                        WHERE e.cod_envio IS NOT NULL
+                            AND e.cod_envio <> ''
+                            AND s.codigo = {0}
+                    ),
+                    ejecuciones_pendientes AS (
+                        SELECT
+                            le.""TipoEntidad"",
+                            le.""CodEnvio"",
+                            le.""FechaDatos"",
+                            le.estado_ejecucion AS ""EstadoEjecucion"",
+                            le.trigger_type AS ""TriggerType"",
+                            le.ultima_fecha_ejecucion AS ""UltimaFechaEjecucion"",
+                            le.""output"" AS ""Output"",
+                            le.""error"" AS ""Error""
+                        FROM latest_exec le
+                        WHERE NOT EXISTS (
+                            SELECT 1
+                            FROM dtx_seguimiento s
+                            WHERE s.cod_envio = le.""CodEnvio""
+                              AND s.tipoentidad = le.""TipoEntidad""
+                              AND s.fechadatos = le.""FechaDatos""
+                              AND s.codigo = {0}
+                        )
+                    ),
+                    union_data AS (
+                        SELECT * FROM seguimiento
+                        UNION ALL
+                        SELECT * FROM ejecuciones_pendientes
                     )
-                    SELECT DISTINCT ON (e.cod_envio)
-                        s.tipoentidad AS ""TipoEntidad"",
-                        e.cod_envio AS ""CodEnvio"",
-                        s.fechadatos AS ""FechaDatos"",
-                        le.estado_ejecucion AS ""EstadoEjecucion"",
-                        le.trigger_type AS ""TriggerType"",
-                        le.ultima_fecha_ejecucion AS ""UltimaFechaEjecucion"",
-                        le.""output"" AS ""Output"",
-                        le.""error"" AS ""Error""
-                    FROM dim_entidad_asfi e
-                    JOIN dtx_seguimiento s
-                        ON s.cod_envio = e.cod_envio
-                    LEFT JOIN latest_exec le
-                        ON le.""CodEnvio"" = e.cod_envio
-                        AND le.""TipoEntidad"" = s.tipoentidad
-                        AND le.""FechaDatos"" = s.fechadatos
-                    WHERE e.cod_envio IS NOT NULL
-                        AND e.cod_envio <> ''
-                        AND s.codigo = {0}
-                    ORDER BY e.cod_envio, s.fechadatos DESC",
+                    SELECT DISTINCT ON (""CodEnvio"")
+                        ""TipoEntidad"",
+                        ""CodEnvio"",
+                        ""FechaDatos"",
+                        ""EstadoEjecucion"",
+                        ""TriggerType"",
+                        ""UltimaFechaEjecucion"",
+                        ""Output"",
+                        ""Error""
+                    FROM union_data
+                    ORDER BY ""CodEnvio"", ""FechaDatos"" DESC",
                     codigo)
                 .ToListAsync();
 
@@ -143,7 +180,6 @@ public class ETLExecutorController : ControllerBase
             return BadRequest(new { error = "El parámetro 'codigo' es requerido." });
         }
 
-        // Create ETLExecutionHistory record with PENDIENTE status
         var fechaDatos = request.FechaDatos ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
         var triggerType = request.Action?.ToUpperInvariant() switch
@@ -153,56 +189,42 @@ public class ETLExecutorController : ControllerBase
             _ => "MANUAL"
         };
 
-        var history = new ETLExecutionHistory
-        {
-            CodEnvio = request.CodEnvio ?? string.Empty,
-            TipoEntidad = request.TipoEntidad ?? string.Empty,
-            FechaDatos = fechaDatos,
-            Codigo = request.Codigo,
-            Status = "PENDIENTE",
-            TriggerType = triggerType
-        };
-        await _historyRepo.CreateAsync(history);
+        // For "Actualizar" (MANUAL) action, compute the target period so the history record
+        // stores the date that matches what the external ETL will create in dtx_seguimiento.
+        // For "Reprocesar" (REPROCESO), keep the original FechaDatos unchanged.
+        bool isDayBased = _dailyCodes.Contains(request.Codigo, StringComparer.OrdinalIgnoreCase);
+        bool isActualizar = triggerType == "MANUAL";
+        DateOnly targetFecha;
 
-        // Determine Start/End dates: day-based codes use the next day of FechaDatos, others use today
-        string startDate, endDate;
-        if (request.IsDayBased)
+        if (isActualizar)
         {
-            var nextDay = fechaDatos.AddDays(1);
-            var nextnextDay = fechaDatos.AddDays(2);
-            startDate = nextDay.ToString("yyyy-MM-dd");
-            endDate = nextnextDay.ToString("yyyy-MM-dd");
+            if (isDayBased)
+            {
+                targetFecha = fechaDatos.AddDays(1);
+            }
+            else
+            {
+                targetFecha = fechaDatos.AddMonths(1);
+            }
         }
         else
         {
-            var nextMonth = fechaDatos.AddMonths(1);
-            startDate = new DateOnly(nextMonth.Year, nextMonth.Month, 1).ToString("yyyy-MM-dd");
-            var lastDay = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
-            endDate = new DateOnly(nextMonth.Year, nextMonth.Month, lastDay).ToString("yyyy-MM-dd");
+            targetFecha = fechaDatos;
         }
 
-        // Create queue item linked to the ETLExecutionHistory
-        var queueItem = new ExecutionQueueItem
-        {
-            HistoryId = history.Id,
-            TipoEntidad = request.TipoEntidad ?? string.Empty,
-            FechaDatos = fechaDatos,
-            Code = request.Codigo,
-            Start = startDate,
-            End = endDate,
-            Codesend = request.CodEnvio ?? string.Empty,
-            Status = "PENDIENTE",
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var queueItemId = _executionQueue.Enqueue(queueItem);
+        // Delegate to EtlJobService which creates history record and enqueues via Hangfire
+        var historyId = await _etlJobService.EnqueueManualAsync(
+            request.TipoEntidad ?? string.Empty,
+            request.CodEnvio ?? string.Empty,
+            targetFecha,
+            request.Codigo,
+            triggerType);
 
         return Ok(new
         {
-            QueueItemId = queueItemId,
-            HistoryId = history.Id,
-            Status = history.Status,
-            Message = $"Command enqueued successfully. Action: {request.Action}"
+            HistoryId = historyId,
+            Status = "PENDIENTE",
+            Message = $"Command enqueued successfully via Hangfire. Action: {request.Action}"
         });
     }
 

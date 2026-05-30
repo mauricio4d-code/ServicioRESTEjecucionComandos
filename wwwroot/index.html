@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ejecucion de Comandos - Datax SAFI</title>
+    <title>Ejecucion de ETLs - Datax SAFI</title>
     <style>
         * {
             margin: 0;
@@ -78,6 +78,35 @@
 
         .logout-btn:hover {
             background-color: #b71c1c;
+        }
+
+        /* Navigation bar */
+        .nav-bar {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .nav-bar a {
+            text-decoration: none;
+            color: #0078d4;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .nav-bar a:hover {
+            background-color: #e8f0fe;
+        }
+
+        .nav-bar a.active {
+            background-color: #0078d4;
+            color: #ffffff;
         }
 
         .user-info {
@@ -175,6 +204,21 @@
         .btn:disabled {
             background-color: #c5c5c5 !important;
             cursor: not-allowed;
+        }
+
+        /* Row dimming for active executions */
+        tr.row-active-execution {
+            background-color: #fff3cd !important;
+            opacity: 0.75;
+        }
+
+        tr.row-active-execution:hover {
+            background-color: #ffeaa7 !important;
+        }
+
+        /* Disabled button tooltip hint */
+        .btn[disabled] {
+            position: relative;
         }
 
         /* Status badge */
@@ -300,6 +344,41 @@
         .toast-error {
             background-color: #d32f2f;
         }
+
+        /* Refresh button */
+        .btn-refresh {
+            background-color: #0078d4;
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-refresh:hover {
+            background-color: #106ebe;
+        }
+
+        .btn-refresh svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+
+        .btn-refresh.spinning svg {
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Toolbar row for refresh button */
+        .toolbar-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 16px;
+        }
     </style>
 </head>
 
@@ -307,11 +386,27 @@
     <button class="logout-btn" onclick="logoutAndRedirect()">Cerrar Sesión</button>
 
     <div class="container">
-        <h1>Ejecucion de Comandos</h1>
+        <h1>Ejecucion de ETLs</h1>
+
+        <!-- Navigation -->
+        <div class="nav-bar">
+            <a href="index.html" class="active">Ejecución de ETLs</a>
+            <a href="scheduler.html">Programaciones</a>
+        </div>
 
         <!-- ==================== DASHBOARD VIEW ==================== -->
         <div id="dashboardView">
             <p class="user-info">Bienvenido, <span id="userName"></span></p>
+
+            <!-- Toolbar with refresh button -->
+            <div class="toolbar-row">
+                <button id="refreshBtn" class="btn btn-refresh" onclick="manualRefresh()" disabled>
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                    </svg>
+                    Refrescar
+                </button>
+            </div>
 
             <!-- Base Datos selector -->
             <div class="select-container">
@@ -361,9 +456,89 @@
         let currentCodigo = "";
         let currentIsDayBased = false;
         let pollingIntervals = {};
+        let pollingState = {}; // Maps historyId -> { codEnvio, fechadatos } for restart after refresh
+        let tableRefreshInProgress = false;
 
         // ========================
-        //  Check if current year-month is greater than fecha's year-month
+        //  Stop all active polling intervals
+        // ========================
+        function stopAllPolling() {
+            Object.keys(pollingIntervals).forEach(key => {
+                clearInterval(pollingIntervals[key]);
+            });
+            pollingIntervals = {};
+        }
+
+        // ========================
+        //  Manual refresh - full table re-render
+        //  Uses refreshInProgress flag to prevent race conditions with polling.
+        // ========================
+        async function manualRefresh() {
+            if (!currentCodigo) return;
+
+            const refreshBtn = document.getElementById("refreshBtn");
+            refreshBtn.disabled = true;
+            refreshBtn.classList.add("spinning");
+
+            const loading = document.getElementById("loading");
+            const tableContainer = document.getElementById("tableContainer");
+            const errorMessage = document.getElementById("errorMessage");
+
+            errorMessage.textContent = "";
+            loading.classList.add("visible");
+            tableContainer.style.display = "none";
+
+            // Set flag to block polling from firing concurrently
+            tableRefreshInProgress = true;
+
+            // Save active polling state before clearing intervals
+            // so we can restart polling for in-progress items after refresh
+            const savedPollingState = { ...pollingState };
+
+            // Clear all existing polling intervals to prevent stale callbacks
+            // from interfering with the freshly rendered table DOM
+            stopAllPolling();
+
+            try {
+                const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/query-results?codigo=${encodeURIComponent(currentCodigo)}`);
+
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                const data = await res.json();
+                // Full re-render (not partial update)
+                renderResultsTable(data);
+                tableContainer.style.display = "block";
+
+                // Restart polling for items that were still in progress
+                for (const [historyId, state] of Object.entries(savedPollingState)) {
+                    try {
+                        const statusRes = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
+                        if (statusRes.ok) {
+                            const statusItem = await statusRes.json();
+                            if (statusItem.status === "PENDIENTE" || statusItem.status === "EN PROCESO") {
+                                startPolling(historyId, state.codEnvio, state.fechadatos);
+                            }
+                        }
+                    } catch {
+                        // If status check fails, skip restarting polling for this item
+                    }
+                }
+            } catch (error) {
+                errorMessage.textContent = `Error refrescando datos: ${error.message}`;
+            } finally {
+                loading.classList.remove("visible");
+                refreshBtn.disabled = false;
+                refreshBtn.classList.remove("spinning");
+                // Release the flag so polling can resume
+                tableRefreshInProgress = false;
+            }
+        }
+
+        // ========================
+        //  Check if the month following fecha has already concluded.
+        //  The "Actualizar" button is only shown when current month is at
+        //  least 2 months ahead of fecha's month (i.e., the next month
+        //  after fecha has fully passed).
         // ========================
         function isCurrentYearMonthGreaterThanFecha(fechaValue) {
             if (!fechaValue) return false;
@@ -377,10 +552,12 @@
                 const now = new Date();
                 const currentYear = now.getFullYear();
                 const currentMonth = now.getMonth() + 1; // getMonth() is 0-based
-                // Compare as year-month integers to handle cross-year comparisons
+                // Compare as year-month integers to handle cross-year comparisons.
+                // Require currentYM >= fechaYM + 2 so that the month following
+                // fecha has already concluded (not just started).
                 const currentYM = currentYear * 12 + currentMonth;
                 const fechaYM = fechaYear * 12 + fechaMonth;
-                return currentYM > fechaYM;
+                return currentYM >= fechaYM + 2;
             }
 
             // Fallback: try parsing as full datetime
@@ -393,11 +570,14 @@
             const currentMonth = now.getMonth() + 1;
             const currentYM = currentYear * 12 + currentMonth;
             const fechaYM = fechaYear * 12 + fechaMonth;
-            return currentYM > fechaYM;
+            return currentYM >= fechaYM + 2;
         }
 
         // ========================
-        //  Check if current date is greater than fecha's date (day-level)
+        //  Check if the day following fecha has already concluded.
+        //  The "Actualizar" button is only shown when current date is at
+        //  least 2 days ahead of fecha's date (i.e., the next day after
+        //  fecha has fully passed).
         // ========================
         function isCurrentDateGreaterThanFecha(fechaValue) {
             if (!fechaValue) return false;
@@ -405,6 +585,7 @@
             const dateOnlyMatch = String(fechaValue).match(/^(\d{4})-(\d{2})-(\d{2})$/);
             if (dateOnlyMatch) {
                 const fechaDate = new Date(parseInt(dateOnlyMatch[1]), parseInt(dateOnlyMatch[2]) - 1, parseInt(dateOnlyMatch[3]));
+                fechaDate.setDate(fechaDate.getDate() + 1); // Next day must have concluded
                 const now = new Date();
                 now.setHours(0, 0, 0, 0);
                 return now > fechaDate;
@@ -413,6 +594,7 @@
             const d = new Date(fechaValue);
             if (isNaN(d.getTime())) return false;
             d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() + 1); // Next day must have concluded
             const now = new Date();
             now.setHours(0, 0, 0, 0);
             return now > d;
@@ -427,63 +609,77 @@
         ];
 
         // ========================
-        //  Get last day of a given month (year, month 1-12)
+        //  Parse year and month from a date string
+        //  Supports "YYYY-MM-DD", "YYYY/MM/DD", or full datetime strings.
+        //  Returns { year, month } or null on failure.
         // ========================
-        function getLastDayOfMonth(year, month) {
-            return new Date(year, month, 0).getDate();
+        function parseYearMonth(fechaValue) {
+            if (!fechaValue) return null;
+
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})/);
+            if (dateOnlyMatch) {
+                return {
+                    year: parseInt(dateOnlyMatch[1], 10),
+                    month: parseInt(dateOnlyMatch[2], 10)
+                };
+            }
+
+            const d = new Date(fechaValue);
+            if (isNaN(d.getTime())) return null;
+            return { year: d.getFullYear(), month: d.getMonth() + 1 };
         }
 
         // ========================
-        //  Build "Actualizar del 1 al X de <Month>" label from fecha
+        //  Parse full date (year, month, day) from a date string
+        //  Supports "YYYY-MM-DD", "YYYY/MM/DD", or full datetime strings.
+        //  Returns { year, month, day } or null on failure.
         // ========================
-        function getActualizarLabel(fechaValue) {
-            if (!fechaValue) return "Actualizar";
+        function parseFullDate(fechaValue) {
+            if (!fechaValue) return null;
 
-            // Parse DateOnly "YYYY-MM-DD" or "YYYY/MM/DD"
-            let year, month;
-            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})/);
+            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
             if (dateOnlyMatch) {
-                year = parseInt(dateOnlyMatch[1], 10);
-                month = parseInt(dateOnlyMatch[2], 10);
-            } else {
-                const d = new Date(fechaValue);
-                if (isNaN(d.getTime())) return "Actualizar";
-                year = d.getFullYear();
-                month = d.getMonth() + 1;
+                return {
+                    year: parseInt(dateOnlyMatch[1], 10),
+                    month: parseInt(dateOnlyMatch[2], 10),
+                    day: parseInt(dateOnlyMatch[3], 10)
+                };
             }
 
-            // Next month (wrap December -> January)
-            const nextMonth = month % 12 + 1;
-            const nextYear = month === 12 ? year + 1 : year;
+            const d = new Date(fechaValue);
+            if (isNaN(d.getTime())) return null;
+            return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+        }
 
-            const lastDay = getLastDayOfMonth(nextYear, nextMonth);
+        // ========================
+        //  Get the next month number (1-12), wrapping December -> January
+        // ========================
+        function getNextMonth(month) {
+            return month % 12 + 1;
+        }
+
+        // ========================
+        //  Build "Actualizar [MES]" label from fecha (month-based codes)
+        // ========================
+        function getActualizarLabel(fechaValue) {
+            const parsed = parseYearMonth(fechaValue);
+            if (!parsed) return "Actualizar";
+
+            const nextMonth = getNextMonth(parsed.month);
             const monthName = spanishMonths[nextMonth - 1];
 
-            return `Actualizar del 1 al ${lastDay} de ${monthName}`;
+            return `Actualizar ${monthName}`;
         }
 
         // ========================
         //  Build "Actualizar [DIA] de <Month>" label for day-based codes
         // ========================
         function getActualizarLabelDayBased(fechaValue) {
-            if (!fechaValue) return "Actualizar";
-
-            let year, month, day;
-            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
-            if (dateOnlyMatch) {
-                year = parseInt(dateOnlyMatch[1], 10);
-                month = parseInt(dateOnlyMatch[2], 10);
-                day = parseInt(dateOnlyMatch[3], 10);
-            } else {
-                const d = new Date(fechaValue);
-                if (isNaN(d.getTime())) return "Actualizar";
-                year = d.getFullYear();
-                month = d.getMonth() + 1;
-                day = d.getDate();
-            }
+            const parsed = parseFullDate(fechaValue);
+            if (!parsed) return "Actualizar";
 
             // Next day
-            const nextDate = new Date(year, month - 1, day + 1);
+            const nextDate = new Date(parsed.year, parsed.month - 1, parsed.day + 1);
             const nextDay = nextDate.getDate();
             const nextMonth = nextDate.getMonth() + 1;
             const monthName = spanishMonths[nextMonth - 1];
@@ -492,26 +688,13 @@
         }
 
         // ========================
-        //  Build "Reprocesar <Month>" label from fecha
+        //  Build "Reprocesar [MES]" label from fecha (month-based codes)
         // ========================
         function getReprocesarLabel(fechaValue) {
-            if (!fechaValue) return "Reprocesar";
+            const parsed = parseYearMonth(fechaValue);
+            if (!parsed) return "Reprocesar";
 
-            let year, month;
-            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})/);
-            if (dateOnlyMatch) {
-                year = parseInt(dateOnlyMatch[1], 10);
-                month = parseInt(dateOnlyMatch[2], 10);
-            } else {
-                const d = new Date(fechaValue);
-                if (isNaN(d.getTime())) return "Reprocesar";
-                year = d.getFullYear();
-                month = d.getMonth() + 1;
-            }
-
-            // Next month (wrap December -> January)
-            const nextMonth = month % 12 + 1;
-            const monthName = spanishMonths[nextMonth - 1];
+            const monthName = spanishMonths[parsed.month - 1];
 
             return `Reprocesar ${monthName}`;
         }
@@ -520,29 +703,12 @@
         //  Build "Reprocesar [DIA] de <Month>" label for day-based codes
         // ========================
         function getReprocesarLabelDayBased(fechaValue) {
-            if (!fechaValue) return "Reprocesar";
+            const parsed = parseFullDate(fechaValue);
+            if (!parsed) return "Reprocesar";
 
-            let year, month, day;
-            const dateOnlyMatch = String(fechaValue).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
-            if (dateOnlyMatch) {
-                year = parseInt(dateOnlyMatch[1], 10);
-                month = parseInt(dateOnlyMatch[2], 10);
-                day = parseInt(dateOnlyMatch[3], 10);
-            } else {
-                const d = new Date(fechaValue);
-                if (isNaN(d.getTime())) return "Reprocesar";
-                year = d.getFullYear();
-                month = d.getMonth() + 1;
-                day = d.getDate();
-            }
+            const monthName = spanishMonths[parsed.month - 1];
 
-            // Next day
-            const nextDate = new Date(year, month - 1, day + 1);
-            const nextDay = nextDate.getDate();
-            const nextMonth = nextDate.getMonth() + 1;
-            const monthName = spanishMonths[nextMonth - 1];
-
-            return `Reprocesar ${nextDay} de ${monthName}`;
+            return `Reprocesar ${parsed.day} de ${monthName}`;
         }
 
         // ========================
@@ -608,6 +774,7 @@
 
             if (!codigo) {
                 tableContainer.style.display = "none";
+                document.getElementById("refreshBtn").disabled = true;
                 return;
             }
 
@@ -628,6 +795,7 @@
                 errorMessage.textContent = `Error cargando resultados: ${error.message}`;
             } finally {
                 loading.classList.remove("visible");
+                document.getElementById("refreshBtn").disabled = false;
             }
         }
 
@@ -646,6 +814,9 @@
             results.forEach(row => {
                 const tr = document.createElement("tr");
 
+                // Determine if this row has an active execution (PENDIENTE or EN PROCESO)
+                const isActiveExecution = row.estadoEjecucion === "PENDIENTE" || row.estadoEjecucion === "EN PROCESO";
+
                 const tipoEntidad = document.createElement("td");
                 tipoEntidad.textContent = row.tipoEntidad || "-";
                 tr.appendChild(tipoEntidad);
@@ -655,6 +826,7 @@
                 tr.appendChild(codEnvio);
 
                 const fechadatos = document.createElement("td");
+                fechadatos.id = `fecha-${row.codEnvio}`;
                 fechadatos.textContent = row.fechadatos ? formatDateYYYYMMDD(row.fechadatos) : "-";
                 tr.appendChild(fechadatos);
 
@@ -730,21 +902,37 @@
                         ? getActualizarLabelDayBased(row.fechadatos)
                         : getActualizarLabel(row.fechadatos);
                     actualizarBtn.onclick = () => executeAction("Actualizar", row);
+                    if (isActiveExecution) {
+                        actualizarBtn.disabled = true;
+                        actualizarBtn.title = row.estadoEjecucion === "PENDIENTE"
+                            ? "Ejecución pendiente. Espere a que concluya."
+                            : "Ejecución en proceso. Espere a que concluya.";
+                    }
                     actionWrapper.appendChild(actualizarBtn);
                 }
 
-                if (row.estadoEjecucion === "EXITOSO" || row.estadoEjecucion === "FALLIDO") {
-                    const repDocBtn = document.createElement("button");
-                    repDocBtn.className = "btn btn-reprocesar";
-                    repDocBtn.textContent = currentIsDayBased
-                        ? getReprocesarLabelDayBased(row.fechadatos)
-                        : getReprocesarLabel(row.fechadatos);
-                    repDocBtn.onclick = () => executeAction("Reprocesar", row);
-                    actionWrapper.appendChild(repDocBtn);
+                const repDocBtn = document.createElement("button");
+                repDocBtn.className = "btn btn-reprocesar";
+                repDocBtn.textContent = currentIsDayBased
+                    ? getReprocesarLabelDayBased(row.fechadatos)
+                    : getReprocesarLabel(row.fechadatos);
+                repDocBtn.onclick = () => executeAction("Reprocesar", row);
+                if (isActiveExecution) {
+                    repDocBtn.disabled = true;
+                    repDocBtn.title = row.estadoEjecucion === "PENDIENTE"
+                        ? "Ejecución pendiente. Espere a que concluya."
+                        : "Ejecución en proceso. Espere a que concluya.";
                 }
+                actionWrapper.appendChild(repDocBtn);
 
                 actionsCell.appendChild(actionWrapper);
                 tr.appendChild(actionsCell);
+
+                // Apply visual indicator for active executions
+                if (isActiveExecution) {
+                    tr.classList.add("row-active-execution");
+                }
+
                 tbody.appendChild(tr);
             });
         }
@@ -754,9 +942,6 @@
         // ========================
         async function executeAction(action, row) {
             const codEnvio = row.codEnvio;
-
-            // Disable buttons for this row
-            disableButtonsForRow(codEnvio);
 
             try {
                 const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/execute`, {
@@ -784,7 +969,6 @@
 
             } catch (error) {
                 showToast(`Error: ${error.message}`, "error");
-                enableButtonsForRow(codEnvio);
             }
         }
 
@@ -796,7 +980,13 @@
                 clearInterval(pollingIntervals[historyId]);
             }
 
+            // Store state so polling can be restarted after a manual refresh
+            pollingState[historyId] = { codEnvio, fechadatos };
+
             const interval = setInterval(async () => {
+                // Guard: skip this cycle if manual refresh is in progress
+                if (tableRefreshInProgress) return;
+
                 try {
                     const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
 
@@ -813,14 +1003,21 @@
                     }
 
                     updateStatusBadge(codEnvio, item.status, tooltipContent);
+                    updateFechaCell(codEnvio, item.fechaDatos);
                     updateTriggerType(codEnvio, item.triggerType);
+
+                    // Update action buttons if fechaDatos changed
+                    if (item.fechaDatos && item.fechaDatos !== fechadatos) {
+                        fechadatos = item.fechaDatos;
+                        pollingState[historyId] = { codEnvio, fechadatos };
+                        updateActionButtons(codEnvio, item.fechaDatos);
+                    }
 
                     // Stop polling when terminal status reached
                     if (item.status === "EXITOSO" || item.status === "FALLIDO") {
                         clearInterval(interval);
                         delete pollingIntervals[historyId];
-                        enableButtonsForRow(codEnvio);
-                        addReprocesarButton(codEnvio, fechadatos);
+                        delete pollingState[historyId];
 
                         if (item.status === "EXITOSO") {
                             showToast("Ejecución completada con éxito.", "success");
@@ -834,6 +1031,88 @@
             }, 3000);
 
             pollingIntervals[historyId] = interval;
+        }
+
+        // ========================
+        //  Update Fecha cell in table
+        // ========================
+        function updateFechaCell(codEnvio, fechaDatos) {
+            const fechaEl = document.getElementById(`fecha-${codEnvio}`);
+            if (!fechaEl) return;
+            fechaEl.textContent = fechaDatos ? formatDateYYYYMMDD(fechaDatos) : "-";
+        }
+
+        // ========================
+        //  Update action buttons in table row when fechaDatos changes
+        // ========================
+        function updateActionButtons(codEnvio, newFechaDatos) {
+            const fechaEl = document.getElementById(`fecha-${codEnvio}`);
+            if (!fechaEl) return;
+
+            // Traverse up to the <tr> row, then find the .action-buttons container
+            const row = fechaEl.closest("tr");
+            if (!row) return;
+
+            const actionWrapper = row.querySelector(".action-buttons");
+            if (!actionWrapper) return;
+
+            // Determine if Actualizar is eligible for the new date
+            const canActualizar = currentIsDayBased
+                ? isCurrentDateGreaterThanFecha(newFechaDatos)
+                : isCurrentYearMonthGreaterThanFecha(newFechaDatos);
+
+            // Get existing Actualizar button (first button in wrapper)
+            const existingActualizarBtn = actionWrapper.querySelector(".btn-actualizar");
+            const existingReprocesarBtn = actionWrapper.querySelector(".btn-reprocesar");
+
+            if (canActualizar) {
+                if (existingActualizarBtn) {
+                    // Update the label
+                    existingActualizarBtn.textContent = currentIsDayBased
+                        ? getActualizarLabelDayBased(newFechaDatos)
+                        : getActualizarLabel(newFechaDatos);
+                    // Update the click handler to use the new fecha
+                    const rowData = { codEnvio, fechadatos: newFechaDatos };
+                    existingActualizarBtn.onclick = () => executeAction("Actualizar", rowData);
+                } else {
+                    // Create the Actualizar button (it wasn't shown before)
+                    const actualizarBtn = document.createElement("button");
+                    actualizarBtn.className = "btn btn-actualizar";
+                    actualizarBtn.textContent = currentIsDayBased
+                        ? getActualizarLabelDayBased(newFechaDatos)
+                        : getActualizarLabel(newFechaDatos);
+                    // Store the row data for the click handler
+                    const rowData = { codEnvio, fechadatos: newFechaDatos };
+                    actualizarBtn.onclick = () => executeAction("Actualizar", rowData);
+                    // Insert before the Reprocesar button
+                    if (existingReprocesarBtn) {
+                        actionWrapper.insertBefore(actualizarBtn, existingReprocesarBtn);
+                    } else {
+                        actionWrapper.appendChild(actualizarBtn);
+                    }
+                }
+            } else {
+                // Remove Actualizar button if it exists and is no longer eligible
+                if (existingActualizarBtn) {
+                    existingActualizarBtn.remove();
+                }
+            }
+
+            // Always update the Reprocesar button label
+            if (existingReprocesarBtn) {
+                existingReprocesarBtn.textContent = currentIsDayBased
+                    ? getReprocesarLabelDayBased(newFechaDatos)
+                    : getReprocesarLabel(newFechaDatos);
+                // Update the click handler to use the new fecha
+                const rowData = { codEnvio, fechadatos: newFechaDatos };
+                existingReprocesarBtn.onclick = () => executeAction("Reprocesar", rowData);
+            }
+
+            // Preserve disabled state based on current execution status
+            const statusTextEl = document.getElementById(`statusText-${codEnvio}`);
+            if (statusTextEl) {
+                updateRowVisualState(codEnvio, statusTextEl.textContent);
+            }
         }
 
         // ========================
@@ -868,6 +1147,40 @@
                 case "EXITOSO": return "status-success";
                 case "FALLIDO": return "status-failed";
                 default: return "status-pending";
+            }
+        }
+
+        // ========================
+        //  Update row visual state (disable buttons + dim row) based on status
+        // ========================
+        function updateRowVisualState(codEnvio, status) {
+            const statusEl = document.getElementById(`status-${codEnvio}`);
+            if (!statusEl) return;
+
+            const row = statusEl.closest("tr");
+            if (!row) return;
+
+            const actionWrapper = row.querySelector(".action-buttons");
+            const isActive = status === "PENDIENTE" || status === "EN PROCESO";
+
+            if (actionWrapper) {
+                const buttons = actionWrapper.querySelectorAll("button");
+                buttons.forEach(btn => {
+                    btn.disabled = isActive;
+                    if (isActive) {
+                        btn.title = status === "PENDIENTE"
+                            ? "Ejecución pendiente. Espere a que concluya."
+                            : "Ejecución en proceso. Espere a que concluya.";
+                    } else {
+                        btn.title = "";
+                    }
+                });
+            }
+
+            if (isActive) {
+                row.classList.add("row-active-execution");
+            } else {
+                row.classList.remove("row-active-execution");
             }
         }
 
@@ -912,60 +1225,11 @@
                 tooltipEl.textContent = "";
                 statusEl.classList.remove("has-tooltip");
             }
+
+            // Update row visual state (disable buttons + dim row) based on new status
+            updateRowVisualState(codEnvio, status);
         }
 
-        // ========================
-        //  Enable/disable buttons for a row
-        // ========================
-        function disableButtonsForRow(codEnvio) {
-            // Simple approach: disable all action buttons temporarily
-            // In a more complex app, you'd track per-row state
-        }
-
-        function enableButtonsForRow(codEnvio) {
-            // Re-enable buttons
-        }
-
-        // ========================
-        //  Add Reprocesar button after polling completes
-        // ========================
-        function addReprocesarButton(codEnvio, fechadatos) {
-            const statusEl = document.getElementById(`status-${codEnvio}`);
-            if (!statusEl) return;
-
-            // Navigate from status element to the row
-            const statusCell = statusEl.parentElement;
-            const tr = statusCell.parentElement;
-            if (!tr) return;
-
-            // Extract tipoEntidad from the first <td> of the row
-            const tipoEntidad = tr.querySelector("td:first-child")?.textContent || "";
-
-            const actionsCell = tr.querySelector("td:last-child");
-            if (!actionsCell) return;
-
-            const actionWrapper = actionsCell.querySelector(".action-buttons");
-            if (!actionWrapper) return;
-
-            // Avoid adding duplicate button
-            if (actionWrapper.querySelector(".btn-reprocesar")) return;
-
-            const repDocBtn = document.createElement("button");
-            repDocBtn.className = "btn btn-reprocesar";
-            repDocBtn.textContent = currentIsDayBased
-                ? getReprocesarLabelDayBased(fechadatos)
-                : getReprocesarLabel(fechadatos);
-
-            // Build a row-like object for executeAction
-            const rowData = {
-                tipoEntidad: tipoEntidad,
-                codEnvio: codEnvio,
-                fechadatos: fechadatos
-            };
-            repDocBtn.onclick = () => executeAction("Reprocesar", rowData);
-
-            actionWrapper.appendChild(repDocBtn);
-        }
 
         // ========================
         //  Toast notification

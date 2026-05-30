@@ -81,4 +81,15 @@ public class ETLExecutionHistoryRepository
     {
         return await _context.ETLExecutionHistories.Where(x => x.Status == status).ToListAsync();
     }
+
+    /// <summary>
+    /// Gets the first active (PENDIENTE or EN PROCESO) execution for the given CodEnvio and Codigo, if any.
+    /// </summary>
+    public async Task<ETLExecutionHistory?> GetActiveExecutionAsync(string codEnvio, string codigo)
+    {
+        return await _context.ETLExecutionHistories
+            .FirstOrDefaultAsync(x => x.CodEnvio == codEnvio
+                && x.Codigo == codigo
+                && (x.Status == "PENDIENTE" || x.Status == "EN PROCESO"));
+    }
 }

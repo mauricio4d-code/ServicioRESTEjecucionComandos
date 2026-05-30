@@ -1,4 +1,5 @@
 using System.Text;
+using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -79,12 +80,22 @@ builder.Services.AddDbContext<ServiceDbContext>(options =>
     }
 });
 
+// ScheduleDbContext (SQLite - auto-created on startup for etl_schedule table)
+builder.Services.AddDbContext<ScheduleDbContext>(options =>
+{
+    var scheduleConnectionString = builder.Configuration.GetConnectionString("RefreshTokenDatabase")
+        ?? throw new InvalidOperationException("Connection string 'RefreshTokenDatabase' is not configured.");
+
+    options.UseSqlite(scheduleConnectionString);
+});
+
 // -----------------------------------------------------------------------
 // Repository registrations
 // -----------------------------------------------------------------------
 builder.Services.AddScoped<RefreshTokenRepository>();
 builder.Services.AddScoped<AuthAuditLogRepository>();
 builder.Services.AddScoped<ETLExecutionHistoryRepository>();
+builder.Services.AddScoped<EtlScheduleRepository>();
 
 // -----------------------------------------------------------------------
 // Service registrations
@@ -102,9 +113,6 @@ builder.Services.AddSingleton<IPasswordValidator, LegacyPasswordValidator>();
 // Add controllers
 builder.Services.AddControllers();
 
-// Register ExecutionQueue as singleton (shared across the app)
-builder.Services.AddSingleton<ExecutionQueue>();
-
 // Register CommandExecutor as singleton (parameters are now per-item, not static)
 builder.Services.AddSingleton<CommandExecutor>(sp =>
 {
@@ -112,18 +120,30 @@ builder.Services.AddSingleton<CommandExecutor>(sp =>
     return new CommandExecutor(exePath, logger);
 });
 
-// Register QueuedExecutionService as hosted service (background service)
-builder.Services.AddHostedService(sp =>
-{
-    var queue = sp.GetRequiredService<ExecutionQueue>();
-    var executor = sp.GetRequiredService<CommandExecutor>();
-    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-    var logger = sp.GetRequiredService<ILogger<QueuedExecutionService>>();
-    return new QueuedExecutionService(queue, executor, scopeFactory, waitSeconds, maxParallelExecutions, logger);
-});
+// Register EtlJobService as singleton (Hangfire jobs require singleton resolution)
+builder.Services.AddSingleton<EtlJobService>();
 
 // Register RefreshTokenCleanupService as hosted service (background cleanup)
 builder.Services.AddHostedService<RefreshTokenCleanupService>();
+
+// Register ScheduleSyncService as hosted service (syncs etl_schedule with Hangfire recurring jobs)
+builder.Services.AddHostedService<ScheduleSyncService>();
+
+// -----------------------------------------------------------------------
+// Hangfire configuration (no dashboard, uses existing SQLite database)
+// -----------------------------------------------------------------------
+builder.Services.AddHangfire(config =>
+{
+    config.UseInMemoryStorage();
+});
+
+// Register Hangfire server (background worker) - dashboard is NOT enabled
+builder.Services.AddHangfireServer(options =>
+{
+    options.WorkerCount = 5;
+    options.Queues = new[] { "default" };
+    options.ShutdownTimeout = TimeSpan.FromMinutes(1);
+});
 
 // -----------------------------------------------------------------------
 // JWT Authentication configuration
@@ -188,6 +208,37 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         logger.LogError(ex, "An error occurred creating the RefreshToken SQLite database.");
+    }
+
+    try
+    {
+        var scheduleDbContext = services.GetRequiredService<ScheduleDbContext>();
+
+        // Use raw SQL because EnsureCreated() only runs when the DB file is new,
+        // and this file already exists from RefreshTokenDbContext setup.
+        scheduleDbContext.Database.ExecuteSqlRaw(@"
+            CREATE TABLE IF NOT EXISTS ""etl_schedule"" (
+                ""Id"" TEXT PRIMARY KEY,
+                ""CodEnvio"" TEXT NOT NULL,
+                ""TipoEntidad"" TEXT NOT NULL,
+                ""Codigo"" TEXT NOT NULL,
+                ""CronExpression"" TEXT NOT NULL,
+                ""IsActive"" INTEGER NOT NULL DEFAULT 1,
+                ""CreatedAt"" TEXT NOT NULL,
+                ""UpdatedAt"" TEXT NOT NULL
+            );
+        ");
+        scheduleDbContext.Database.ExecuteSqlRaw(@"
+            CREATE INDEX IF NOT EXISTS ""IX_etl_schedule_IsActive"" ON ""etl_schedule"" (""IsActive"");
+        ");
+        scheduleDbContext.Database.ExecuteSqlRaw(@"
+            CREATE INDEX IF NOT EXISTS ""IX_etl_schedule_Codigo"" ON ""etl_schedule"" (""Codigo"");
+        ");
+        logger.LogInformation("Schedule SQLite database ensured (etl_schedule table created if not exists).");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "An error occurred creating the Schedule SQLite database.");
     }
 
     try

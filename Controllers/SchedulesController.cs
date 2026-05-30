@@ -103,6 +103,7 @@ public class SchedulesController : ControllerBase
         schedule.TipoEntidad = dto.TipoEntidad;
         schedule.Codigo = dto.Codigo;
         schedule.CronExpression = dto.CronExpression;
+        schedule.IsActive = dto.IsActive ?? schedule.IsActive;
         schedule.UpdatedAt = DateTime.UtcNow;
 
         await _scheduleRepo.UpdateAsync(schedule);

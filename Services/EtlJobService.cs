@@ -58,7 +58,9 @@ public class EtlJobService
 
             // Prevent duplicate active executions for the same CodEnvio + Codigo combination.
             // If there's already a PENDIENTE or EN PROCESO record, return its ID instead of creating a new one.
+            _logger.LogInformation("[DB] Checking for active execution in hist_etl_execution for CodEnvio={CodEnvio}, Codigo={Codigo}.", codEnvio, codigo);
             var existing = await historyRepo.GetActiveExecutionAsync(codEnvio, codigo);
+            _logger.LogInformation("[DB] Active execution check completed. Existing record found: {ExistingFound}.", existing != null);
             if (existing != null)
             {
                 _logger.LogWarning(
@@ -79,6 +81,7 @@ public class EtlJobService
                 TriggerType = triggerType
             };
 
+            _logger.LogInformation("[DB] Inserting new ETLExecutionHistory record with status PENDIENTE for CodEnvio={CodEnvio}, Codigo={Codigo}.", codEnvio, codigo);
             await historyRepo.CreateAsync(history);
             historyId = history.Id;
         }
@@ -123,7 +126,9 @@ public class EtlJobService
             using (var scope = _scopeFactory.CreateScope())
             {
                 var scheduleRepo = scope.ServiceProvider.GetRequiredService<EtlScheduleRepository>();
+                _logger.LogInformation("[DB] Loading EtlSchedule by Id {ScheduleId} from schedules table.", scheduleId);
                 schedule = await scheduleRepo.GetByIdAsync(scheduleId);
+                _logger.LogInformation("[DB] Schedule load completed. Schedule found: {ScheduleFound}.", schedule != null);
             }
 
             if (schedule == null || !schedule.IsActive)
@@ -173,7 +178,9 @@ public class EtlJobService
             using (var scope = _scopeFactory.CreateScope())
             {
                 var historyRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
+                _logger.LogInformation("[DB] Loading ETLExecutionHistory by Id {HistoryId} from hist_etl_execution table.", historyId);
                 history = await historyRepo.GetByIdAsync(historyId);
+                _logger.LogInformation("[DB] History load completed. Record found: {HistoryFound}.", history != null);
             }
 
             if (history == null)
@@ -183,6 +190,7 @@ public class EtlJobService
             }
 
             // Update status to EN PROCESO only after acquiring a slot
+            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} status to EN PROCESO.", historyId);
             await UpdateStatusInScopeAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
 
             // Determine Start/End dates based on TriggerType.
@@ -267,6 +275,7 @@ public class EtlJobService
             var status = result.Success ? "EXITOSO" : "FALLIDO";
 
             // Update final status
+            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} final status to {Status}.", historyId, status);
             await UpdateStatusInScopeAsync(
                 historyId,
                 status,

@@ -42,9 +42,11 @@ public class AuthService
     public async Task<LoginResponse?> LoginAsync(string email, string password, string? clientIp = null, string? userAgent = null)
     {
         // Find user by email with role included
+        _logger.LogInformation("[DB] Querying user by email '{Email}' in AuthDbContext.Users.", email);
         var user = await _authDbContext.Users
             .Include(u => u.UserRole)
             .FirstOrDefaultAsync(u => u.Email == email);
+        _logger.LogInformation("[DB] User query completed. User found: {UserFound}.", user != null);
 
         if (user == null)
         {
@@ -128,9 +130,11 @@ public class AuthService
         }
 
         // Find user to generate new JWT
+        _logger.LogInformation("[DB] Querying user by Id {UserId} in AuthDbContext.Users for token refresh.", result.UserId);
         var user = await _authDbContext.Users
             .Include(u => u.UserRole)
             .FirstOrDefaultAsync(u => u.Id == result.UserId);
+        _logger.LogInformation("[DB] User query for token refresh completed. User found: {UserFound}.", user != null);
 
         if (user == null || user.UserRole == null)
         {
@@ -209,7 +213,9 @@ public class AuthService
             Success = success
         };
 
+        _logger.LogInformation("[DB] Adding auth audit log event '{EventType}' for UserId {UserId}.", eventType, userId);
         await _auditLogRepository.AddAsync(auditLog);
+        _logger.LogInformation("[DB] Persisting auth audit log to database.");
         await _auditLogRepository.SaveChangesAsync();
     }
 }

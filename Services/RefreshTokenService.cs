@@ -67,7 +67,9 @@ public class RefreshTokenService
             IsRevoked = false
         };
 
+        _logger.LogInformation("[DB] Inserting new refresh token for user {UserId} into RefreshTokens table.", userId);
         await _repository.AddAsync(refreshToken);
+        _logger.LogInformation("[DB] Persisting refresh token to database for user {UserId}.", userId);
         await _repository.SaveChangesAsync();
 
         _logger.LogInformation("Refresh token generated for user {UserId}", userId);
@@ -82,7 +84,9 @@ public class RefreshTokenService
     public async Task<RefreshTokenResult> ValidateAndRotateAsync(string token, string? clientIp = null, string? userAgent = null)
     {
         var tokenHash = ComputeSha256Hash(token);
+        _logger.LogInformation("[DB] Looking up refresh token by hash in RefreshTokens table.");
         var storedToken = await _repository.FindByTokenHashAsync(tokenHash);
+        _logger.LogInformation("[DB] Refresh token lookup completed. Token found: {TokenFound}.", storedToken != null);
 
         if (storedToken == null)
         {
@@ -123,7 +127,9 @@ public class RefreshTokenService
         storedToken.RevokedAtUtc = DateTime.UtcNow;
         storedToken.RevokedByIp = clientIp;
         storedToken.ReplacedByTokenHash = newTokenHash;
+        _logger.LogInformation("[DB] Marking old refresh token as revoked for user {UserId}.", storedToken.UserId);
         await _repository.UpdateAsync(storedToken);
+        _logger.LogInformation("[DB] Persisting revoked refresh token to database for user {UserId}.", storedToken.UserId);
         await _repository.SaveChangesAsync();
 
         _logger.LogInformation("Refresh token rotated for user {UserId}", storedToken.UserId);
@@ -139,7 +145,9 @@ public class RefreshTokenService
             Message = $"Refresh token rotated for user {storedToken.UserId}",
             Success = true
         };
+        _logger.LogInformation("[DB] Adding audit log for TokenRotated event for user {UserId}.", storedToken.UserId);
         await _auditLogRepository.AddAsync(auditLog);
+        _logger.LogInformation("[DB] Persisting TokenRotated audit log to database.");
         await _auditLogRepository.SaveChangesAsync();
 
         return new RefreshTokenResult
@@ -156,7 +164,9 @@ public class RefreshTokenService
     public async Task<bool> RevokeAsync(string token, string? clientIp = null)
     {
         var tokenHash = ComputeSha256Hash(token);
+        _logger.LogInformation("[DB] Looking up refresh token by hash in RefreshTokens table for revocation.");
         var storedToken = await _repository.FindByTokenHashAsync(tokenHash);
+        _logger.LogInformation("[DB] Refresh token lookup for revocation completed. Token found: {TokenFound}.", storedToken != null);
 
         if (storedToken == null || storedToken.IsRevoked)
         {
@@ -166,7 +176,9 @@ public class RefreshTokenService
         storedToken.IsRevoked = true;
         storedToken.RevokedAtUtc = DateTime.UtcNow;
         storedToken.RevokedByIp = clientIp;
+        _logger.LogInformation("[DB] Marking refresh token as revoked for user {UserId}.", storedToken.UserId);
         await _repository.UpdateAsync(storedToken);
+        _logger.LogInformation("[DB] Persisting revoked refresh token to database for user {UserId}.", storedToken.UserId);
         await _repository.SaveChangesAsync();
 
         _logger.LogInformation("Refresh token revoked for user {UserId}", storedToken.UserId);
@@ -181,7 +193,9 @@ public class RefreshTokenService
             Message = $"Refresh token revoked for user {storedToken.UserId}",
             Success = true
         };
+        _logger.LogInformation("[DB] Adding audit log for TokenRevoked event for user {UserId}.", storedToken.UserId);
         await _auditLogRepository.AddAsync(auditLog);
+        _logger.LogInformation("[DB] Persisting TokenRevoked audit log to database.");
         await _auditLogRepository.SaveChangesAsync();
 
         return true;
@@ -192,7 +206,9 @@ public class RefreshTokenService
     /// </summary>
     public async Task RevokeAllForUserAsync(int userId)
     {
+        _logger.LogInformation("[DB] Revoking all refresh tokens for user {UserId} in bulk.", userId);
         var count = await _repository.RevokeByUserIdAsync(userId);
+        _logger.LogInformation("[DB] Bulk revocation completed. {Count} tokens revoked for user {UserId}.", count, userId);
         _logger.LogInformation("Revoked {Count} refresh tokens for user {UserId}", count, userId);
 
         // Log audit event for bulk revocation
@@ -204,7 +220,9 @@ public class RefreshTokenService
             Message = $"All refresh tokens revoked for user {userId} ({count} tokens)",
             Success = true
         };
+        _logger.LogInformation("[DB] Adding audit log for BulkTokenRevoked event for user {UserId}.", userId);
         await _auditLogRepository.AddAsync(auditLog);
+        _logger.LogInformation("[DB] Persisting BulkTokenRevoked audit log to database.");
         await _auditLogRepository.SaveChangesAsync();
     }
 

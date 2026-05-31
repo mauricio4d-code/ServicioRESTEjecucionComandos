@@ -72,7 +72,9 @@ public class ScheduleSyncService : BackgroundService
         {
             using var scope = _serviceProvider.CreateScope();
             var scheduleRepo = scope.ServiceProvider.GetRequiredService<EtlScheduleRepository>();
+            _logger.LogInformation("[DB] Querying active schedules from schedules table.");
             var activeSchedules = await scheduleRepo.GetActiveAsync();
+            _logger.LogInformation("[DB] Active schedules query completed. Count: {Count}.", activeSchedules.Count);
 
             if (stoppingToken.IsCancellationRequested) return;
 
@@ -138,7 +140,9 @@ public class ScheduleSyncService : BackgroundService
         EtlScheduleRepository scheduleRepo,
         IRecurringJobManager recurringJobManager)
     {
+        _logger.LogInformation("[DB] Querying all schedules from schedules table for cleanup check.");
         var allSchedules = await scheduleRepo.GetAllAsync();
+        _logger.LogInformation("[DB] All schedules query completed. Count: {Count}.", allSchedules.Count);
         var activeIds = new HashSet<Guid>(allSchedules.Where(s => s.IsActive).Select(s => s.Id));
 
         foreach (var schedule in allSchedules)

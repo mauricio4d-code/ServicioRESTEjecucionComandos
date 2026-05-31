@@ -57,6 +57,7 @@ public class QueuedExecutionService : BackgroundService
                     await _semaphore.WaitAsync(stoppingToken);
 
                     // Update ETLExecutionHistory status to EN PROCESO only after slot is acquired
+                    _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} status to EN PROCESO.", item.HistoryId);
                     await UpdateStatusInScopeAsync(
                         item.HistoryId,
                         "EN PROCESO",
@@ -119,6 +120,7 @@ public class QueuedExecutionService : BackgroundService
             var status = result.Success ? "EXITOSO" : "FALLIDO";
 
             // Update ETLExecutionHistory with final status and execution details
+            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} final status to {Status}.", item.HistoryId, status);
             await UpdateStatusInScopeAsync(
                 item.HistoryId,
                 status,
@@ -148,6 +150,7 @@ public class QueuedExecutionService : BackgroundService
             _logger.LogError(ex, "Exception while processing item {ItemId}", item.Id);
 
             // Mark as FALLIDO in database on unexpected exception
+            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} status to FALLIDO due to exception.", item.HistoryId);
             await UpdateStatusInScopeAsync(
                 item.HistoryId,
                 "FALLIDO",

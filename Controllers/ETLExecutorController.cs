@@ -21,6 +21,7 @@ public class ETLExecutorController : ControllerBase
     private readonly EtlJobService _etlJobService;
     private readonly ETLExecutionHistoryRepository _historyRepo;
     private readonly ServiceDbContext _serviceDbContext;
+    private readonly ILogger<ETLExecutorController> _logger;
     private readonly string[] _dailyCodes;
 
     /// <summary>
@@ -30,11 +31,13 @@ public class ETLExecutorController : ControllerBase
         EtlJobService etlJobService,
         ETLExecutionHistoryRepository historyRepo,
         ServiceDbContext serviceDbContext,
+        ILogger<ETLExecutorController> logger,
         IConfiguration configuration)
     {
         _etlJobService = etlJobService;
         _historyRepo = historyRepo;
         _serviceDbContext = serviceDbContext;
+        _logger = logger;
         _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
     }
 
@@ -49,9 +52,11 @@ public class ETLExecutorController : ControllerBase
     [HttpGet("base-datos")]
     public async Task<IActionResult> GetBaseDatos()
     {
+        _logger.LogInformation("[DB] Querying base_datos table for all records (SELECT codigo, nombre FROM base_datos).");
         var baseDatosList = await _serviceDbContext.Database
             .SqlQueryRaw<BaseDatos>("SELECT codigo, nombre FROM base_datos")
             .ToListAsync();
+        _logger.LogInformation("[DB] base_datos query completed. Records returned: {Count}.", baseDatosList.Count);
 
         var response = baseDatosList.Select(item => new BaseDatosResponse
         {
@@ -81,6 +86,7 @@ public class ETLExecutorController : ControllerBase
 
         try
         {
+            _logger.LogInformation("[DB] Executing query-results SQL for codigo='{Codigo}' against dtx_seguimiento + hist_etl_execution.", codigo);
             var results = await _serviceDbContext.Database
                 .SqlQueryRaw<QueryResult>(
                     @"WITH latest_exec AS (
@@ -156,6 +162,7 @@ public class ETLExecutorController : ControllerBase
                     codigo)
                 .ToListAsync();
 
+            _logger.LogInformation("[DB] Query-results completed for codigo='{Codigo}'. Records returned: {Count}.", codigo, results.Count);
             return Ok(results);
         }
         catch (Exception ex)
@@ -235,7 +242,9 @@ public class ETLExecutorController : ControllerBase
     [HttpGet("status/{historyId}")]
     public async Task<IActionResult> GetExecutionStatus(Guid historyId)
     {
+        _logger.LogInformation("[DB] Querying ETLExecutionHistory by Id {HistoryId} from hist_etl_execution table.", historyId);
         var item = await _historyRepo.GetByIdAsync(historyId);
+        _logger.LogInformation("[DB] Execution status query completed for HistoryId {HistoryId}. Record found: {Found}.", historyId, item != null);
 
         if (item == null)
         {

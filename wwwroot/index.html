@@ -412,7 +412,6 @@
             <div class="select-container">
                 <label for="baseDatosSelect">Seleccionar Base de Datos:</label>
                 <select id="baseDatosSelect" onchange="onBaseDatosSelected()">
-                    <option value="">-- Seleccione --</option>
                 </select>
             </div>
 
@@ -748,6 +747,11 @@
                 const data = await res.json();
                 const select = document.getElementById("baseDatosSelect");
 
+                if (!data || data.length === 0) {
+                    console.warn("No base_datos records returned from API.");
+                    return;
+                }
+
                 data.forEach(item => {
                     const option = document.createElement("option");
                     option.value = item.codigo;
@@ -755,6 +759,10 @@
                     option.dataset.isDayBased = item.isDayBased || "false";
                     select.appendChild(option);
                 });
+
+                // Auto-select the first item and load its query results
+                select.selectedIndex = 0;
+                await onBaseDatosSelected();
             } catch (error) {
                 console.error("Error loading base_datos:", error);
             }

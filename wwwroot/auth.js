@@ -250,7 +250,7 @@ function isAdmin() {
 
     const adminRoles = ["Administrador", "Administador", "Admin", "admin", "administrador"];
     const result = adminRoles.includes(role);
-    console.log("[auth.js] isAdmin() - result:", result);
+    //console.log("[auth.js] isAdmin() - result:", result);
     return result;
 }
 

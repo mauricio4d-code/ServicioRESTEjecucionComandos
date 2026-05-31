@@ -154,6 +154,7 @@ ASP.NET Core determina el ambiente activo mediante la variable de entorno **`ASP
 
 ### Cambiar ambiente y ejecutar el servicio
 
+#### powershell
 ```powershell
 # Development
 $env:ASPNETCORE_ENVIRONMENT = "Development"
@@ -168,6 +169,7 @@ dotnet run --environment Development
 dotnet run --environment Production
 ```
 
+#### CMD (Command Prompt)
 ```CMD (Command Prompt)
 # Development
 set ASPNETCORE_ENVIRONMENT=Development

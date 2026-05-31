@@ -28,4 +28,11 @@
     <PackageReference Include="Hangfire.InMemory" Version="1.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Serilog Logging -->
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.0" />
+  </ItemGroup>
+
 </Project>

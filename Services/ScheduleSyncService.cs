@@ -115,8 +115,7 @@ public class ScheduleSyncService : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(
-                        ex, "Failed to sync recurring job for schedule {ScheduleId}.", schedule.Id);
+                    _logger.LogError(ex, "Failed to sync recurring job for schedule {ScheduleId}.", schedule.Id);
                 }
             }
 

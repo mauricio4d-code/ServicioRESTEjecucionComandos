@@ -3,12 +3,27 @@ using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Interfaces;
 using ServicioRESTEjecucionComandos.Repositories;
 using ServicioRESTEjecucionComandos.Services;
 
+// -----------------------------------------------------------------------
+// Ensure Logs directory exists before starting
+// -----------------------------------------------------------------------
+if (!Directory.Exists("Logs"))
+{
+    Directory.CreateDirectory("Logs");
+}
+
 var builder = WebApplication.CreateBuilder(args);
+
+// -----------------------------------------------------------------------
+// Serilog configuration (reads from appsettings.json Serilog section)
+// -----------------------------------------------------------------------
+builder.Host.UseSerilog((context, configuration) =>
+    configuration.ReadFrom.Configuration(context.Configuration));
 
 // Read configuration values
 var dataxConfig = builder.Configuration.GetSection("DataxConfig");
@@ -198,6 +213,15 @@ using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     var logger = services.GetRequiredService<ILogger<Program>>();
+
+    logger.LogInformation("Application started in [{Environment}] environment.", app.Environment.EnvironmentName);
+
+    // Log Serilog file retention setting
+    var logRetentionDays = builder.Configuration.GetValue<int>("Serilog:WriteTo:1:Args:retainedFileCountLimit", 0);
+    if (logRetentionDays > 0)
+    {
+        logger.LogInformation("Log file retention: {Days} days (retainedFileCountLimit).", logRetentionDays);
+    }
 
     try
     {

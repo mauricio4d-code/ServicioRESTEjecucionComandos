@@ -2,7 +2,7 @@
 
 Servicio REST desarrollado en C# con ASP.NET Core 8 que proporciona una interfaz web autenticada para ejecutar comandos de forma asíncrona mediante una cola de ejecución con procesamiento paralelo configurable.
 
-El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh tokens), validación contra una base de datos legacy, registro de auditoría, limpieza automática de tokens expirados, y gestión de ejecuciones a través de la tabla `hist_etl_execution` en una base de datos de servicio (PostgreSQL o SQL Server).
+El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh tokens), validación contra una base de datos legacy, registro de auditoría, limpieza automática de tokens expirados, gestión de ejecuciones a través de la tabla `hist_etl_execution` en una base de datos de servicio (PostgreSQL o SQL Server), y programación de ejecuciones ETL recurrentes mediante Hangfire.
 
 ---
 
@@ -21,17 +21,22 @@ El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh
 ServicioRESTEjecucionComandos/
 ├── Program.cs                          # Punto de entrada y configuración de dependencias
 ├── ServicioRESTEjecucionComandos.csproj # Archivo de proyecto y paquetes NuGet
-├── appsettings.json                    # Configuración del servicio
+├── appsettings.json                    # Configuración base del servicio
+├── appsettings.Development.json        # Configuración específica para ambiente Development
+├── appsettings.Production.json         # Configuración específica para ambiente Production
 ├── Controllers/
 │   ├── AuthController.cs               # Endpoints de autenticación (login, refresh, logout)
-│   └── ETLExecutorController.cs        # Endpoints REST para ETL, base-datos, y consultas
+│   ├── ETLExecutorController.cs        # Endpoints REST para ETL, base-datos, y consultas
+│   └── SchedulesController.cs          # Endpoints CRUD para programación de ETLs
 ├── Data/
 │   ├── AuthDbContext.cs                # Contexto EF Core para BD legacy (usuarios/roles)
 │   ├── RefreshTokenDbContext.cs        # Contexto EF Core para BD SQLite (tokens/auditoría)
+│   ├── ScheduleDbContext.cs            # Contexto EF Core para BD SQLite (programaciones ETL)
 │   └── ServiceDbContext.cs             # Contexto EF Core para BD de servicio (hist_etl_execution)
 ├── DTOs/
 │   ├── BaseDatosResponse.cs            # DTO para respuesta de lookup de base_datos (incluye IsDayBased)
 │   ├── ErrorResponse.cs                # DTO para respuestas de error
+│   ├── EtlScheduleDto.cs               # DTOs para crear/actualizar/leer programaciones ETL
 │   ├── LoginRequest.cs                 # DTO para solicitud de inicio de sesión
 │   ├── LoginResponse.cs                # DTO para respuesta con tokens JWT
 │   ├── QueryResult.cs                  # DTO para resultados de consulta de seguimiento
@@ -44,6 +49,7 @@ ServicioRESTEjecucionComandos/
 │   ├── AuthAuditLog.cs                 # Modelo de registro de auditoría
 │   ├── BaseDatos.cs                    # Modelo para tabla base_datos (lookup)
 │   ├── ETLExecutionHistory.cs          # Modelo para historial de ejecuciones ETL
+│   ├── EtlSchedule.cs                  # Modelo para programaciones ETL recurrentes
 │   ├── ExecutionQueueItem.cs           # Modelo para items de la cola
 │   ├── RefreshToken.cs                 # Modelo de token de refresco
 │   ├── User.cs                         # Modelo de usuario legacy
@@ -51,19 +57,24 @@ ServicioRESTEjecucionComandos/
 ├── Repositories/
 │   ├── AuthAuditLogRepository.cs       # Repositorio para registros de auditoría
 │   ├── ETLExecutionHistoryRepository.cs # Repositorio para CRUD de ETLExecutionHistory
+│   ├── EtlScheduleRepository.cs        # Repositorio para CRUD de EtlSchedule
 │   └── RefreshTokenRepository.cs       # Repositorio para persistencia de refresh tokens
 ├── Services/
 │   ├── AuthService.cs                  # Orquestador de flujos de autenticación
 │   ├── CommandExecutor.cs              # Ejecuta la aplicación de consola
+│   ├── EtlJobService.cs                # Servicio central para ejecuciones ETL (Hangfire + CommandExecutor)
 │   ├── ExecutionQueue.cs               # Cola thread-safe para items
 │   ├── JwtService.cs                   # Generación de tokens JWT
 │   ├── QueuedExecutionService.cs       # Servicio de fondo que procesa la cola
 │   ├── RefreshTokenCleanupService.cs   # Limpieza automática de tokens expirados
-│   └── RefreshTokenService.cs          # Generación y rotación de refresh tokens
+│   ├── RefreshTokenService.cs          # Generación y rotación de refresh tokens
+│   └── ScheduleSyncService.cs          # Sincroniza programaciones DB con Hangfire recurring jobs
 └── wwwroot/
     ├── auth.js                         # Cliente JavaScript para autenticación
     ├── index.html                      # Interfaz web con selector de BD y tabla de resultados
-    └── login.html                      # Interfaz de inicio de sesión
+    ├── login.html                      # Interfaz de inicio de sesión
+    ├── scheduler.html                  # Interfaz web para gestionar programaciones ETL
+    └── scheduler.js                    # Cliente JavaScript para la interfaz de programaciones
 ```
 
 ---
@@ -109,7 +120,7 @@ Configura la base de datos de servicio donde se almacena la tabla `hist_etl_exec
 | Clave | Descripción |
 |-------|-------------|
 | `AuthDatabase` | Cadena de conexión a la BD legacy (usuarios/roles) |
-| `RefreshTokenDatabase` | Cadena de conexión a la BD SQLite (tokens/auditoría) |
+| `RefreshTokenDatabase` | Cadena de conexión a la BD SQLite (tokens/auditoría/programaciones) |
 | `ServiceDatabase` | Cadena de conexión a la BD de servicio (hist_etl_execution, base_datos) |
 
 ### Jwt
@@ -129,21 +140,49 @@ Configura la base de datos de servicio donde se almacena la tabla `hist_etl_exec
 | `CleanupIntervalMinutes` | Intervalo entre limpiezas de tokens expirados | `60` |
 | `AuditLogRetentionDays` | Días de retención para registros de auditoría | `90` |
 
+### Hangfire
+
+| Clave | Descripción | Valor por Defecto |
+|-------|-------------|-------------------|
+| `SyncIntervalSeconds` | Intervalo entre sincronizaciones de programaciones DB → Hangfire | `60` |
+
 ---
 
-## Cómo Ejecutar el Servicio
+## Ejecutar el Servicio y Ambientes de Ejecución
 
-### Opción 1: Usando dotnet CLI
+ASP.NET Core determina el ambiente activo mediante la variable de entorno **`ASPNETCORE_ENVIRONMENT`**. Los archivos `appsettings.{Environment}.json` se cargan automáticamente y sobrescriben la configuración base.
 
-```bash
-cd ServicioRESTEjecucionComandos
+### Cambiar ambiente y ejecutar el servicio
+
+```powershell
+# Development
+$env:ASPNETCORE_ENVIRONMENT = "Development"
 dotnet run
+
+# Production
+$env:ASPNETCORE_ENVIRONMENT = "Production"
+dotnet run
+
+# O usando el parámetro --environment
+dotnet run --environment Development
+dotnet run --environment Production
 ```
 
-### Opción 2: Usando Visual Studio
+```CMD (Command Prompt)
+# Development
+set ASPNETCORE_ENVIRONMENT=Development
+dotnet run
 
-1. Abra el archivo `ServicioRESTEjecucionComandos.sln` en Visual Studio
-2. Presione F5 o haga clic en "Iniciar depuración"
+# Development en una sola linea
+set ASPNETCORE_ENVIRONMENT=Development && dotnet run
+
+# Production
+set ASPNETCORE_ENVIRONMENT=Production
+dotnet run
+
+# Production en una sola linea
+set ASPNETCORE_ENVIRONMENT=Production && dotnet run
+```
 
 ### Acceso al Servicio
 
@@ -160,6 +199,68 @@ http://localhost:5001
 ```
 
 (El puerto exacto se mostrará en la consola al iniciar)
+
+---
+
+### Configuración por ambiente
+
+| Configuración | Default | Development | Production |
+|---|---|---|---|
+| `MinimumLevel.Default` | Information | **Debug** | Information |
+| `retainedFileCountLimit` | 30 días | **7 días** | **90 días** |
+| `outputTemplate` | Sin propiedades | **Con `{EventProperties}`** | Sin propiedades |
+
+### Flujo de carga de configuración
+
+```
+appsettings.json
+    ├──→ appsettings.Development.json  (si ASPNETCORE_ENVIRONMENT = Development)
+    └──→ appsettings.Production.json   (si ASPNETCORE_ENVIRONMENT = Production)
+```
+
+**Nota:** La sección `Serilog` de cada archivo de ambiente **sobrescribe completamente** la sección base. Cada archivo debe incluir la configuración completa de Serilog.
+
+---
+
+## Sistemas de Logging
+
+### Serilog
+
+El servicio utiliza **Serilog** como proveedor de logging estructurado, reemplazando el logger por defecto de ASP.NET Core. Los logs se escriben simultáneamente a **consola** y a **archivos de texto** con rotación diaria.
+
+#### Configuración
+
+La sección `Serilog` en [`appsettings.json`](appsettings.json) define:
+
+- **Sinks activos:** Consola y Archivo
+- **Nivel mínimo:** `Information` (por defecto)
+- **Rotación:** Diaria (`rollingInterval: Day`)
+- **Retención:** 30 días (por defecto)
+- **Formato:** `{Timestamp} [{Level}] {Message}{NewLine}{Exception}`
+
+#### Archivos de log
+
+Los archivos se generan en la carpeta `Logs/` (creada automáticamente al iniciar):
+
+```
+Logs/
+├── log-2026-05-31.txt
+├── log-2026-06-01.txt
+└── ...
+```
+
+#### Ejemplo de salida
+
+```
+2026-05-31 06:34:30.123 -04:00 [INF] Successful login for user: admin@example.com from IP 192.168.1.100
+2026-05-31 06:34:30.456 -04:00 [ERR] Error executing command for item 42
+   System.InvalidOperationException: Command failed
+      at ServicioRESTEjecucionComandos.Services.CommandExecutor.ExecuteAsync()
+```
+
+#### Compatibilidad con `ILogger<T>`
+
+Todo el código existente que inyecta `ILogger<T>` funciona sin cambios. Serilog se registra como proveedor de `Microsoft.Extensions.Logging`, por lo que las llamadas a `LogInformation()`, `LogWarning()`, `LogError()`, etc., se redirigen automáticamente a los sinks configurados.
 
 ---
 
@@ -249,7 +350,7 @@ Cierra sesión revocando el token de refresco.
 
 ### Protección de Endpoints
 
-Todos los endpoints de `/api/etlexecutor/*` están protegidos con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized`.
+Todos los endpoints de `/api/etlexecutor/*` y `/api/schedules/*` están protegidos con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized`.
 
 ---
 
@@ -270,43 +371,6 @@ Devuelve todos los registros de la tabla `base_datos` para poblar el selector de
 ### GET /api/etlexecutor/query-results?codigo=XYZ
 
 Ejecuta la consulta de seguimiento para el código de base de datos especificado, incluyendo el estado de ejecución más reciente desde `hist_etl_execution`.
-
-**Consulta ejecutada:**
-```sql
-WITH latest_exec AS (
-    SELECT DISTINCT ON ("CodEnvio", "TipoEntidad", "FechaDatos")
-        "CodEnvio",
-        "TipoEntidad",
-        "FechaDatos",
-        "Status" AS estado_ejecucion,
-        "TriggerType" AS trigger_type,
-        "CompletedAt" AS ultima_fecha_ejecucion,
-        "Output" AS "output",
-        "Error" AS "error"
-    FROM hist_etl_execution
-    ORDER BY "CodEnvio", "TipoEntidad", "FechaDatos", "CompletedAt" DESC NULLS LAST
-)
-SELECT DISTINCT ON (e.cod_envio)
-    s.tipoentidad AS "TipoEntidad",
-    e.cod_envio AS "CodEnvio",
-    s.fechadatos AS "FechaDatos",
-    le.estado_ejecucion AS "EstadoEjecucion",
-    le.trigger_type AS "TriggerType",
-    le.ultima_fecha_ejecucion AS "UltimaFechaEjecucion",
-    le."output" AS "Output",
-    le."error" AS "Error"
-FROM dim_entidad_asfi e
-JOIN dtx_seguimiento s
-    ON s.cod_envio = e.cod_envio
-LEFT JOIN latest_exec le
-    ON le."CodEnvio" = e.cod_envio
-    AND le."TipoEntidad" = s.tipoentidad
-    AND le."FechaDatos" = s.fechadatos
-WHERE e.cod_envio IS NOT NULL
-    AND e.cod_envio <> ''
-    AND s.codigo = XYZ
-ORDER BY e.cod_envio, s.fechadatos DESC
-```
 
 **Respuesta:**
 ```json
@@ -371,6 +435,78 @@ Devuelve el estado actual de un registro `ETLExecutionHistory` por su `HistoryId
   "completedAt": "2026-05-20T10:05:00Z"
 }
 ```
+
+---
+
+## Programación de ETLs (Hangfire)
+
+El servicio incluye un sistema de programación de ejecuciones ETL recurrentes basado en **Hangfire**, que permite definir programaciones con expresiones Cron y sincronizarlas automáticamente con los jobs de Hangfire.
+
+### Componentes
+
+| Componente | Descripción |
+|---|---|
+| [`EtlSchedule`](Models/EtlSchedule.cs) | Modelo que representa una programación ETL almacenada en la tabla `etl_schedule` |
+| [`SchedulesController`](Controllers/SchedulesController.cs) | API REST para CRUD de programaciones |
+| [`EtlScheduleRepository`](Repositories/EtlScheduleRepository.cs) | Repositorio para operaciones CRUD en `etl_schedule` |
+| [`ScheduleSyncService`](Services/ScheduleSyncService.cs) | Servicio de fondo que sincroniza programaciones DB con Hangfire |
+| [`EtlJobService`](Services/EtlJobService.cs) | Servicio central que ejecuta los jobs de Hangfire |
+| [`ScheduleDbContext`](Data/ScheduleDbContext.cs) | DbContext para la tabla `etl_schedule` (SQLite) |
+| [`scheduler.html`](wwwroot/scheduler.html) | Interfaz web para gestionar programaciones |
+
+### Flujo de programación
+
+1. El usuario crea una programación a través de la interfaz [`scheduler.html`](wwwroot/scheduler.html) o la API `/api/schedules`
+2. Se almacena un registro `EtlSchedule` en la tabla `etl_schedule` (SQLite)
+3. [`ScheduleSyncService`](Services/ScheduleSyncService.cs) detecta cambios periódicamente (cada `Hangfire:SyncIntervalSeconds`)
+4. Las programaciones activas se sincronizan como **recurring jobs** en Hangfire
+5. Hangfire ejecuta [`EtlJobService.ExecuteAsync()`](Services/EtlJobService.cs) según la expresión Cron
+6. Cada ejecución crea un registro `ETLExecutionHistory` con `TriggerType = "PROGRAMADO"`
+
+### Endpoints de Programación
+
+#### GET /api/schedules
+
+Devuelve todas las programaciones ETL.
+
+#### POST /api/schedules
+
+Crea una nueva programación ETL.
+
+**Solicitud:**
+```json
+{
+  "codEnvio": "ENV001",
+  "tipoEntidad": "ENTIDAD_1",
+  "codigo": "XYZ",
+  "cronExpression": "0 2 * * *"
+}
+```
+
+#### PUT /api/schedules/{id}
+
+Actualiza una programación existente.
+
+#### DELETE /api/schedules/{id}
+
+Elimina una programación y su job asociado en Hangfire.
+
+#### PATCH /api/schedules/{id}/toggle
+
+Activa o desactiva una programación sin eliminarla.
+
+### Tabla `etl_schedule`
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `Id` | GUID | Identificador único |
+| `CodEnvio` | VARCHAR(100) | Código de envío de la entidad |
+| `TipoEntidad` | VARCHAR | Tipo de entidad |
+| `Codigo` | VARCHAR | Código de base de datos |
+| `CronExpression` | VARCHAR | Expresión Cron (ej: `0 2 * * *`) |
+| `IsActive` | BOOLEAN | Activa/desactivada |
+| `CreatedAt` | DATETIME | Fecha de creación |
+| `UpdatedAt` | DATETIME | Fecha de última actualización |
 
 ---
 
@@ -460,7 +596,13 @@ Almacena usuarios y roles del sistema legacy. Soporta los siguientes proveedores
 
 ### Base de Datos SQLite (RefreshTokenDatabase)
 
-Almacena tokens de refresco y registros de auditoría. Se crea automáticamente en la raíz del proyecto si no existe.
+Almacena tokens de refresco, registros de auditoría y programaciones ETL. Se crea automáticamente en la raíz del proyecto si no existe.
+
+| Tabla | Descripción |
+|-------|-------------|
+| `RefreshTokens` | Tokens de refresco y estado de revocación |
+| `AuthAuditLogs` | Registros de auditoría de eventos de autenticación |
+| `etl_schedule` | Programaciones ETL recurrentes |
 
 ### Base de Datos de Servicio (ServiceDatabase)
 
@@ -470,6 +612,18 @@ Almacena la tabla `hist_etl_execution` (creada automáticamente) y proporciona a
 |-----------|---------|---------------|
 | PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `ServiceDb.Provider = "postgres"` |
 | SQL Server | `Microsoft.EntityFrameworkCore.SqlServer` | `ServiceDb.Provider = "sqlserver"` |
+
+---
+
+## Servicios de Fondo
+
+El servicio ejecuta los siguientes background services concurrentemente:
+
+| Servicio | Descripción |
+|----------|-------------|
+| [`QueuedExecutionService`](Services/QueuedExecutionService.cs) | Procesa la cola de ejecución de comandos |
+| [`RefreshTokenCleanupService`](Services/RefreshTokenCleanupService.cs) | Limpia tokens expirados y logs de auditoría antiguos |
+| [`ScheduleSyncService`](Services/ScheduleSyncService.cs) | Sincroniza programaciones DB con Hangfire recurring jobs |
 
 ---
 
@@ -483,5 +637,7 @@ Almacena la tabla `hist_etl_execution` (creada automáticamente) y proporciona a
 - El servicio no incluye Swagger; solo la interfaz HTML está disponible
 - Los resultados de ejecución se almacenan en la tabla `hist_etl_execution` (no se escriben archivos en disco)
 - El estado del usuario se valida con la comparación `Userstate == "Activo"`
-- Cada evento de autenticación se registra en `ILogger` y en el repositorio `AuthAuditLogRepository`
+- Cada evento de autenticación se registra en `ILogger` (→ Serilog → consola + archivo) y en el repositorio `AuthAuditLogRepository` (→ SQLite)
+- Los logs de Serilog se almacenan en la carpeta `Logs/` con rotación diaria
+- El ambiente de ejecución se controla con la variable `ASPNETCORE_ENVIRONMENT`
 - Todos los comentarios y código fuente están en inglés, excepto este archivo de documentación

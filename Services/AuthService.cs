@@ -108,7 +108,8 @@ public class AuthService
         {
             AccessToken = accessToken,
             RefreshToken = refreshToken,
-            ExpiresIn = _jwtService.GetExpiresInSeconds()
+            ExpiresIn = _jwtService.GetExpiresInSeconds(),
+            Firstname = user.Firstname ?? string.Empty
         };
     }
 

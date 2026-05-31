@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <title>Iniciar Sesión - Datax SAFI</title>
     <style>
         * {
@@ -179,7 +180,7 @@
                 }
 
                 const data = await res.json();
-                storeTokens(data.accessToken, data.refreshToken, data.expiresIn);
+                storeTokens(data.accessToken, data.refreshToken, data.expiresIn, data.firstname);
 
                 // Redirect to dashboard on success
                 window.location.href = "index.html";

@@ -12,7 +12,7 @@ namespace ServicioRESTEjecucionComandos.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "AdminOnly")]
 public class SchedulesController : ControllerBase
 {
     private readonly EtlScheduleRepository _scheduleRepo;

@@ -6,6 +6,7 @@ const API_BASE = window.location.origin;
 const ACCESS_TOKEN_KEY = "auth_access_token";
 const REFRESH_TOKEN_KEY = "auth_refresh_token";
 const TOKEN_EXPIRY_KEY = "auth_token_expiry";
+const FIRSTNAME_KEY = "auth_firstname";
 
 // How many seconds before expiry to trigger auto-refresh
 const AUTO_REFRESH_THRESHOLD_SECONDS = 60;
@@ -20,17 +21,21 @@ let refreshPromise = null;
 //  Token storage helpers
 // ========================
 
-function storeTokens(access, refresh, expiresIn) {
+function storeTokens(access, refresh, expiresIn, firstname) {
     localStorage.setItem(ACCESS_TOKEN_KEY, access);
     localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
     const expiryMs = Date.now() + (expiresIn * 1000);
     localStorage.setItem(TOKEN_EXPIRY_KEY, expiryMs.toString());
+    if (firstname) {
+        localStorage.setItem(FIRSTNAME_KEY, firstname);
+    }
 }
 
 function clearTokens() {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(TOKEN_EXPIRY_KEY);
+    localStorage.removeItem(FIRSTNAME_KEY);
 }
 
 function getAccessToken() {
@@ -44,6 +49,10 @@ function getRefreshToken() {
 function getTokenExpiry() {
     const v = localStorage.getItem(TOKEN_EXPIRY_KEY);
     return v ? parseInt(v, 10) : 0;
+}
+
+function getFirstname() {
+    return localStorage.getItem(FIRSTNAME_KEY) || "";
 }
 
 function isTokenExpired() {
@@ -213,6 +222,36 @@ async function ensureAuthenticated() {
         return false;
     }
     return true;
+}
+
+// ========================
+//  Role-based access check
+// ========================
+
+function isAdmin() {
+    const token = getAccessToken();
+    if (!token) return false;
+    const payload = decodeJwtPayload(token);
+    if (!payload) return false;
+
+    // Search for role claim by iterating through all keys - handles encoding mismatches
+    const roleClaimKey = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role";
+    let role = payload[roleClaimKey];
+
+    // Fallback: search for any key containing "role" in case of encoding differences
+    if (role === undefined) {
+        for (const key of Object.keys(payload)) {
+            if (key.toLowerCase().includes("role")) {
+                role = payload[key];
+                break;
+            }
+        }
+    }
+
+    const adminRoles = ["Administrador", "Administador", "Admin", "admin", "administrador"];
+    const result = adminRoles.includes(role);
+    console.log("[auth.js] isAdmin() - result:", result);
+    return result;
 }
 
 // ========================

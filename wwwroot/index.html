@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <title>Ejecucion de ETLs - Datax SAFI</title>
     <style>
         * {
@@ -391,7 +392,7 @@
         <!-- Navigation -->
         <div class="nav-bar">
             <a href="index.html" class="active">Ejecución de ETLs</a>
-            <a href="scheduler.html">Programaciones</a>
+            <a id="schedulesNav" href="scheduler.html">Programaciones</a>
         </div>
 
         <!-- ==================== DASHBOARD VIEW ==================== -->
@@ -1264,11 +1265,16 @@
         (async function init() {
             const authenticated = await ensureAuthenticated();
             if (authenticated) {
-                // Decode name from JWT
-                const token = getAccessToken();
-                const payload = decodeJwtPayload(token);
-                const name = extractUserName(payload, "Usuario");
-                document.getElementById("userName").textContent = name;
+                // Get firstname from localStorage
+                const firstname = getFirstname();
+                document.getElementById("userName").textContent = firstname || "Usuario";
+
+                // Hide scheduler nav link for non-admin users
+                if (!isAdmin()) {
+                    const schedulesNav = document.getElementById("schedulesNav");
+                    if (schedulesNav) schedulesNav.style.display = "none";
+                }
+
                 loadBaseDatos();
                 // Schedule auto-refresh for while page is open
                 scheduleAutoRefresh();

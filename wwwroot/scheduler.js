@@ -490,11 +490,18 @@ document.addEventListener("keydown", function (e) {
 // ========================
 (async function init() {
     const authenticated = await ensureAuthenticated();
-    if (authenticated) {
-        await loadSchedules();
-        scheduleAutoRefresh();
-    } else {
+    if (!authenticated) {
         clearTokens();
         window.location.href = "login.html";
+        return;
     }
+
+    // Admin-only guard: redirect non-admin users away from the scheduler
+    if (!isAdmin()) {
+        window.location.href = "index.html";
+        return;
+    }
+
+    await loadSchedules();
+    scheduleAutoRefresh();
 })();

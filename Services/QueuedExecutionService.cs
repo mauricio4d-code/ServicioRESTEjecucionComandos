@@ -116,34 +116,86 @@ public class QueuedExecutionService : BackgroundService
         {
             var result = await _executor.ExecuteAsync(item);
 
+            // Before updating final status, verify that dtx_seguimiento has a matching record.
+            var verificationResult = await VerifyDtxSeguimientoInScopeAsync(item.CodEnvio, item.Code);
+            var verificationFechaDatos = verificationResult?.FechaDatos;
+
             var completedAt = DateTime.UtcNow;
-            var status = result.Success ? "EXITOSO" : "FALLIDO";
+            bool targetPeriodMatched = false;
 
-            // Update ETLExecutionHistory with final status and execution details
-            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} final status to {Status}.", item.HistoryId, status);
-            await UpdateStatusInScopeAsync(
-                item.HistoryId,
-                status,
-                exitCode: result.ExitCode,
-                output: result.Output,
-                error: result.Error,
-                completedAt: completedAt);
-
-            if (result.Success)
+            if (verificationFechaDatos.HasValue)
             {
-                _logger.LogInformation("Item {ItemId} processed successfully. ETLExecutionHistory status set to EXITOSO.", item.Id);
+                // Check if the returned FechaDatos falls within the target period defined by Start/End.
+                var verificationDate = verificationFechaDatos.Value;
+                var start = DateOnly.Parse(item.Start);
+                var end = DateOnly.Parse(item.End);
+                targetPeriodMatched = verificationDate >= start && verificationDate <= end;
+            }
+
+            if (targetPeriodMatched)
+            {
+                // dtx_seguimiento record found for the target period - update normally
+                var status = result.Success ? "EXITOSO" : "FALLIDO";
+
+                _logger.LogInformation("[DB] dtx_seguimiento verification passed for HistoryId {HistoryId}. Updating final status to {Status} with FechaDatos={FechaDatos}.",
+                    item.HistoryId, status, verificationFechaDatos);
+                await UpdateStatusWithFechaDatosInScopeAsync(
+                    item.HistoryId,
+                    status,
+                    fechaDatos: verificationFechaDatos,
+                    exitCode: result.ExitCode,
+                    output: result.Output,
+                    error: result.Error,
+                    completedAt: completedAt);
+
+                if (result.Success)
+                {
+                    _logger.LogInformation("Item {ItemId} processed successfully. ETLExecutionHistory status set to EXITOSO.", item.Id);
+                }
+                else
+                {
+                    _logger.LogWarning("Item {ItemId} processing failed with exit code {ExitCode}. ETLExecutionHistory status set to FALLIDO.", item.Id, result.ExitCode);
+                }
+
+                // Update the in-memory item status as well
+                item.Status = status;
+                item.Result = result.Success ? result.Output : result.Error;
+                item.CompletedAt = completedAt;
+
+                return result.Success;
             }
             else
             {
-                _logger.LogWarning("Item {ItemId} processing failed with exit code {ExitCode}. ETLExecutionHistory status set to FALLIDO.", item.Id, result.ExitCode);
+                // No matching dtx_seguimiento record for the target period - mark as FALLIDO with descriptive error
+                bool isDayBased = item.Start == item.End;
+                string errorMessage;
+                if (isDayBased)
+                {
+                    errorMessage = $"No se encontraron datos para ejecutar el ETL para la fecha {item.Start}";
+                }
+                else
+                {
+                    errorMessage = $"No se encontraron datos para ejecutar el ETL desde fecha {item.Start} hasta fecha {item.End}";
+                }
+
+                _logger.LogWarning("[DB] dtx_seguimiento verification FAILED for HistoryId {HistoryId}. No matching record for target period [{Start}, {End}]. Marking as FALLIDO.",
+                    item.HistoryId, item.Start, item.End);
+                await UpdateStatusWithFechaDatosInScopeAsync(
+                    item.HistoryId,
+                    "FALLIDO",
+                    fechaDatos: verificationFechaDatos,
+                    exitCode: result.ExitCode,
+                    output: result.Output,
+                    error: errorMessage,
+                    completedAt: completedAt);
+
+                // Update the in-memory item status as well
+                item.Status = "FALLIDO";
+                item.Result = errorMessage;
+                item.CompletedAt = completedAt;
+
+                return false;
             }
-
-            // Update the in-memory item status as well
-            item.Status = status;
-            item.Result = result.Success ? result.Output : result.Error;
-            item.CompletedAt = completedAt;
-
-            return result.Success;
         }
         catch (Exception ex)
         {
@@ -182,6 +234,44 @@ public class QueuedExecutionService : BackgroundService
         await repo.UpdateStatusAsync(
             historyId,
             status,
+            exitCode: exitCode,
+            output: output,
+            error: error,
+            executedAt: executedAt,
+            completedAt: completedAt);
+    }
+
+    /// <summary>
+    /// Creates a scoped service provider and calls VerifyDtxSeguimientoAsync on ETLExecutionHistoryRepository,
+    /// ensuring the scoped DbContext is properly disposed after each call.
+    /// </summary>
+    private async Task<DtxSeguimientoVerificationResult?> VerifyDtxSeguimientoInScopeAsync(string codEnvio, string codigo)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
+        return await repo.VerifyDtxSeguimientoAsync(codEnvio, codigo);
+    }
+
+    /// <summary>
+    /// Creates a scoped service provider and calls UpdateStatusWithFechaDatosAsync on ETLExecutionHistoryRepository,
+    /// ensuring the scoped DbContext is properly disposed after each call.
+    /// </summary>
+    private async Task UpdateStatusWithFechaDatosInScopeAsync(
+        Guid historyId,
+        string status,
+        DateOnly? fechaDatos = null,
+        int? exitCode = null,
+        string? output = null,
+        string? error = null,
+        DateTime? executedAt = null,
+        DateTime? completedAt = null)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
+        await repo.UpdateStatusWithFechaDatosAsync(
+            historyId,
+            status,
+            fechaDatos: fechaDatos,
             exitCode: exitCode,
             output: output,
             error: error,

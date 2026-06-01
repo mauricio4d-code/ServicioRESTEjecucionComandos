@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Text;
 using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -219,8 +222,6 @@ using (var scope = app.Services.CreateScope())
     var services = scope.ServiceProvider;
     var logger = services.GetRequiredService<ILogger<Program>>();
 
-    logger.LogInformation("Application started in [{Environment}] environment.", app.Environment.EnvironmentName);
-
     // Log Serilog file retention setting
     var logRetentionDays = builder.Configuration.GetValue<int>("Serilog:WriteTo:1:Args:retainedFileCountLimit", 0);
     if (logRetentionDays > 0)
@@ -354,5 +355,47 @@ app.MapGet("/", () => Results.Redirect("/index.html"));
 
 // Map API controllers
 app.MapControllers();
+
+// -----------------------------------------------------------------------
+// Log the service URL(s) for easy access
+// -----------------------------------------------------------------------
+var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+var configuredUrl = app.Configuration["Kestrel:Endpoints:Http:Url"] ?? "http://localhost:5000";
+
+// Parse the configured URL to extract host and port
+var uri = new Uri(configuredUrl);
+var host = uri.Host;
+var port = uri.Port;
+var scheme = uri.Scheme;
+
+// When bound to 0.0.0.0, resolve actual local IPs so users know where to connect
+IEnumerable<string> accessibleAddresses;
+if (host == "0.0.0.0")
+{
+    var localIps = NetworkInterface.GetAllNetworkInterfaces()
+        .Where(ni => ni.OperationalStatus == OperationalStatus.Up && ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+        .SelectMany(ni => ni.GetIPProperties().UnicastAddresses
+            .Where(u => u.Address.AddressFamily == AddressFamily.InterNetwork)
+            .Select(u => u.Address.ToString()))
+        .Distinct()
+        .OrderBy(ip => ip)
+        .ToList();
+
+    accessibleAddresses = localIps.Select(ip => $"{scheme}://{ip}:{port}");
+}
+else
+{
+    accessibleAddresses = new[] { configuredUrl };
+}
+
+startupLogger.LogInformation("============================================");
+startupLogger.LogInformation("ServicioRESTEjecucionComandos is running!");
+startupLogger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
+startupLogger.LogInformation("Service available at:");
+foreach (var address in accessibleAddresses)
+{
+    startupLogger.LogInformation("  -> {Address}", address);
+}
+startupLogger.LogInformation("============================================");
 
 app.Run();

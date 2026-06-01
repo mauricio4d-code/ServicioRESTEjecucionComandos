@@ -207,11 +207,15 @@ public class ETLExecutorController : ControllerBase
         {
             if (isDayBased)
             {
+                // Day-based: target is the next day
                 targetFecha = fechaDatos.AddDays(1);
             }
             else
             {
-                targetFecha = fechaDatos.AddMonths(1);
+                // Month-based: target is the last day of the next month
+                var nextMonth = fechaDatos.AddMonths(1);
+                var lastDay = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
+                targetFecha = new DateOnly(nextMonth.Year, nextMonth.Month, lastDay);
             }
         }
         else

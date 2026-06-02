@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -33,6 +34,15 @@
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="ServicioRESTEjecucionComandos.UnitTests/**/*.cs" />
+    <Compile Remove="ServicioRESTEjecucionComandos.IntegrationTests/**/*.cs" />
+    <None Remove="ServicioRESTEjecucionComandos.UnitTests/**/*.json" />
+    <None Remove="ServicioRESTEjecucionComandos.IntegrationTests/**/*.json" />
+    <Content Remove="ServicioRESTEjecucionComandos.UnitTests/**/*" />
+    <Content Remove="ServicioRESTEjecucionComandos.IntegrationTests/**/*" />
   </ItemGroup>
 
 </Project>

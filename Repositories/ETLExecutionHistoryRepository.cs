@@ -5,6 +5,22 @@ using ServicioRESTEjecucionComandos.Models;
 namespace ServicioRESTEjecucionComandos.Repositories;
 
 /// <summary>
+/// DTO for the result of the dtx_seguimiento verification query.
+/// </summary>
+public class DtxSeguimientoVerificationResult
+{
+    /// <summary>
+    /// The cod_envio from the matching record.
+    /// </summary>
+    public string CodEnvio { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The latest fechadatos found for this cod_envio and codigo combination.
+    /// </summary>
+    public DateOnly? FechaDatos { get; set; }
+}
+
+/// <summary>
 /// Repository for CRUD operations on ETLExecutionHistory entities.
 /// </summary>
 public class ETLExecutionHistoryRepository
@@ -115,5 +131,63 @@ public class ETLExecutionHistoryRepository
                 && (x.Status == "PENDIENTE" || x.Status == "EN PROCESO"));
         _logger.LogDebug("Active ETLExecutionHistory query for CodEnvio {CodEnvio}, Codigo {Codigo} returned {Found}.", codEnvio, codigo, result != null);
         return result;
+    }
+
+    /// <summary>
+    /// Queries dtx_seguimiento to verify that a record exists for the given CodEnvio and Codigo combination.
+    /// Returns the latest FechaDatos found, or null if no matching record exists.
+    /// </summary>
+    public async Task<DtxSeguimientoVerificationResult?> VerifyDtxSeguimientoAsync(string codEnvio, string codigo)
+    {
+        _logger.LogInformation("[DB] Querying dtx_seguimiento for CodEnvio={CodEnvio}, Codigo={Codigo}.", codEnvio, codigo);
+        var results = await _context.Database
+            .SqlQueryRaw<DtxSeguimientoVerificationResult>(
+                @"SELECT
+                    s.cod_envio AS ""CodEnvio"",
+                    MAX(s.fechadatos) AS ""FechaDatos""
+                  FROM dtx_seguimiento s
+                  WHERE s.cod_envio = {0}
+                    AND s.codigo = {1}
+                  GROUP BY s.cod_envio",
+                codEnvio, codigo)
+            .ToListAsync();
+
+        var result = results.FirstOrDefault();
+        _logger.LogInformation("[DB] dtx_seguimiento verification for CodEnvio={CodEnvio}, Codigo={Codigo} returned FechaDatos={FechaDatos}.",
+            codEnvio, codigo, result?.FechaDatos);
+        return result;
+    }
+
+    /// <summary>
+    /// Updates the status, FechaDatos, and related fields of an ETLExecutionHistory record atomically.
+    /// </summary>
+    public async Task UpdateStatusWithFechaDatosAsync(
+        Guid id,
+        string status,
+        DateOnly? fechaDatos = null,
+        int? exitCode = null,
+        string? output = null,
+        string? error = null,
+        DateTime? executedAt = null,
+        DateTime? completedAt = null)
+    {
+        _logger.LogInformation("Updating status to {Status} for ETLExecutionHistory in database with Id {HistoryId}.", status, id);
+        var item = await _context.ETLExecutionHistories.FindAsync(id);
+        if (item == null)
+        {
+            _logger.LogWarning("Cannot update status: ETLExecutionHistory not found with Id {HistoryId}.", id);
+            return;
+        }
+
+        item.Status = status;
+        if (fechaDatos.HasValue) item.FechaDatos = fechaDatos.Value;
+        if (exitCode.HasValue) item.ExitCode = exitCode;
+        if (output != null) item.Output = output;
+        if (error != null) item.Error = error;
+        if (executedAt.HasValue) item.ExecutedAt = executedAt;
+        if (completedAt.HasValue) item.CompletedAt = completedAt;
+
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Status updated to {Status} for ETLExecutionHistory in database with Id {HistoryId}.", status, id);
     }
 }

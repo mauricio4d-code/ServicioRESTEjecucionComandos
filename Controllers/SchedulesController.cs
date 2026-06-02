@@ -68,16 +68,14 @@ public class SchedulesController : ControllerBase
 
         var schedule = new EtlSchedule
         {
-            CodEnvio = dto.CodEnvio,
-            TipoEntidad = dto.TipoEntidad,
-            Codigo = dto.Codigo,
+            Params = dto.Params,
             CronExpression = dto.CronExpression,
             IsActive = true
         };
 
         await _scheduleRepo.CreateAsync(schedule);
 
-        _logger.LogInformation("Created new schedule {ScheduleId} for code {Codigo}.", schedule.Id, schedule.Codigo);
+        _logger.LogInformation("Created new schedule {ScheduleId} with Params: {Params}.", schedule.Id, schedule.Params);
 
         return CreatedAtAction(nameof(GetScheduleById), new { id = schedule.Id }, MapToDto(schedule));
     }
@@ -99,9 +97,7 @@ public class SchedulesController : ControllerBase
             return NotFound(new { error = $"Schedule with Id {id} not found." });
         }
 
-        schedule.CodEnvio = dto.CodEnvio;
-        schedule.TipoEntidad = dto.TipoEntidad;
-        schedule.Codigo = dto.Codigo;
+        schedule.Params = dto.Params;
         schedule.CronExpression = dto.CronExpression;
         schedule.IsActive = dto.IsActive ?? schedule.IsActive;
         schedule.UpdatedAt = DateTime.UtcNow;
@@ -161,9 +157,7 @@ public class SchedulesController : ControllerBase
         return new EtlScheduleDto
         {
             Id = schedule.Id,
-            CodEnvio = schedule.CodEnvio,
-            TipoEntidad = schedule.TipoEntidad,
-            Codigo = schedule.Codigo,
+            Params = schedule.Params,
             CronExpression = schedule.CronExpression,
             IsActive = schedule.IsActive,
             CreatedAt = schedule.CreatedAt,

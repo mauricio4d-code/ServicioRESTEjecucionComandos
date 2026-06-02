@@ -14,6 +14,7 @@ public class ServiceDbContext : DbContext
     }
 
     public DbSet<ETLExecutionHistory> ETLExecutionHistories => Set<ETLExecutionHistory>();
+    public DbSet<ETLExecutionHistoryScheduled> ETLExecutionHistoryScheduleds => Set<ETLExecutionHistoryScheduled>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +40,27 @@ public class ServiceDbContext : DbContext
             entity.Property(e => e.CompletedAt).HasColumnName("CompletedAt");
 
             entity.HasIndex(e => e.Status);
+        });
+
+        // ETLExecutionHistoryScheduled entity configuration
+        modelBuilder.Entity<ETLExecutionHistoryScheduled>(entity =>
+        {
+            entity.ToTable("hist_etl_execution_scheduled");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.ScheduleId).HasColumnName("ScheduleId").IsRequired();
+            entity.Property(e => e.Params).HasColumnName("Params");
+            entity.Property(e => e.Status).HasColumnName("Status").IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ExitCode).HasColumnName("ExitCode");
+            entity.Property(e => e.Output).HasColumnName("Output");
+            entity.Property(e => e.Error).HasColumnName("Error");
+            entity.Property(e => e.ExecutedAt).HasColumnName("ExecutedAt");
+            entity.Property(e => e.CompletedAt).HasColumnName("CompletedAt");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.ScheduleId);
         });
 
         // BaseDatos is a read-only legacy table - excluded from migrations.

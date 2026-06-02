@@ -23,6 +23,7 @@ public class ETLExecutorController : ControllerBase
     private readonly ServiceDbContext _serviceDbContext;
     private readonly ILogger<ETLExecutorController> _logger;
     private readonly string[] _dailyCodes;
+    private readonly string[] _excludedCodes;
 
     /// <summary>
     /// Initializes a new instance of ETLExecutorController.
@@ -39,6 +40,7 @@ public class ETLExecutorController : ControllerBase
         _serviceDbContext = serviceDbContext;
         _logger = logger;
         _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
+        _excludedCodes = configuration.GetSection("QueueConfig:ExcludedCodes").Get<string[]>() ?? Array.Empty<string>();
     }
 
     // -----------------------------------------------------------------------
@@ -48,14 +50,29 @@ public class ETLExecutorController : ControllerBase
     /// <summary>
     /// Returns all records from the base_datos table for populating the dropdown,
     /// enriched with an IsDayBased flag for codes configured in QueueConfig:DailyCodes.
+    /// Codes listed in QueueConfig:ExcludedCodes are filtered out at the SQL level.
     /// </summary>
     [HttpGet("base-datos")]
     public async Task<IActionResult> GetBaseDatos()
     {
-        _logger.LogInformation("[DB] Querying base_datos table for all records (SELECT codigo, nombre FROM base_datos).");
-        var baseDatosList = await _serviceDbContext.Database
-            .SqlQueryRaw<BaseDatos>("SELECT codigo, nombre FROM base_datos")
-            .ToListAsync();
+        string sql;
+        object[]? sqlParams = null;
+        if (_excludedCodes.Length > 0)
+        {
+            var excludedPlaceholders = string.Join(", ", _excludedCodes.Select((_, i) => $"@p{i}"));
+            sql = $"SELECT codigo, nombre FROM base_datos WHERE codigo NOT IN ({excludedPlaceholders})";
+            sqlParams = _excludedCodes;
+        }
+        else
+        {
+            sql = "SELECT codigo, nombre FROM base_datos";
+        }
+
+        _logger.LogInformation("[DB] Querying base_datos table for all records ({Sql}).", sql.Replace("@p", ""));
+        var baseDatosList = sqlParams is not null
+            ? await _serviceDbContext.Database.SqlQueryRaw<BaseDatos>(sql, sqlParams).ToListAsync()
+            : await _serviceDbContext.Database.SqlQueryRaw<BaseDatos>(sql).ToListAsync();
+
         _logger.LogInformation("[DB] base_datos query completed. Records returned: {Count}.", baseDatosList.Count);
 
         var response = baseDatosList.Select(item => new BaseDatosResponse
@@ -90,17 +107,19 @@ public class ETLExecutorController : ControllerBase
             var results = await _serviceDbContext.Database
                 .SqlQueryRaw<QueryResult>(
                     @"WITH latest_exec AS (
-                        SELECT DISTINCT ON (""CodEnvio"", ""TipoEntidad"", ""FechaDatos"")
+                        SELECT DISTINCT ON (""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"")
                             ""CodEnvio"",
                             ""TipoEntidad"",
                             ""FechaDatos"",
+                            ""Codigo"",
                             ""Status"" AS estado_ejecucion,
                             ""TriggerType"" AS trigger_type,
                             ""CompletedAt"" AS ultima_fecha_ejecucion,
                             ""Output"" AS ""output"",
                             ""Error"" AS ""error""
                         FROM hist_etl_execution
-                        ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""CompletedAt"" DESC NULLS LAST
+                        WHERE ""Codigo"" = {0}
+                        ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"", ""CompletedAt"" DESC NULLS LAST
                     ),
                     seguimiento AS (
                         SELECT
@@ -119,6 +138,7 @@ public class ETLExecutorController : ControllerBase
                             ON le.""CodEnvio"" = e.cod_envio
                             AND le.""TipoEntidad"" = s.tipoentidad
                             AND le.""FechaDatos"" = s.fechadatos
+                            AND le.""Codigo"" = {0}
                         WHERE e.cod_envio IS NOT NULL
                             AND e.cod_envio <> ''
                             AND s.codigo = {0}
@@ -207,11 +227,15 @@ public class ETLExecutorController : ControllerBase
         {
             if (isDayBased)
             {
+                // Day-based: target is the next day
                 targetFecha = fechaDatos.AddDays(1);
             }
             else
             {
-                targetFecha = fechaDatos.AddMonths(1);
+                // Month-based: target is the last day of the next month
+                var nextMonth = fechaDatos.AddMonths(1);
+                var lastDay = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
+                targetFecha = new DateOnly(nextMonth.Year, nextMonth.Month, lastDay);
             }
         }
         else

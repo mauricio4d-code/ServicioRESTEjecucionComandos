@@ -43,16 +43,17 @@ public class CommandExecutor
     {
         var itemId = item.Id;
         var historyId = item.HistoryId;
+        var arguments = string.IsNullOrWhiteSpace(item.Params) ? string.Empty : item.Params;
 
-        _logger.LogInformation("Executing command for item {ItemId} (HistoryId {HistoryId}): {ExePath} -code {Code} -start {Start} -end {End} -codesend {Codesend}",
-            itemId, historyId, _exePath, item.Code, item.Start, item.End, item.Codesend);
+        _logger.LogInformation("Executing command for item {ItemId} (HistoryId {HistoryId}): {ExePath} {Arguments}",
+            itemId, historyId, _exePath, arguments);
 
         try
         {
             var startInfo = new ProcessStartInfo
             {
                 FileName = _exePath,
-                Arguments = $"-code {item.Code} -start {item.Start} -end {item.End} -codesend {item.Codesend}",
+                Arguments = arguments,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

@@ -7,6 +7,11 @@ public class LegacyPasswordValidator : IPasswordValidator
 {
     public Task<bool> ValidateAsync(string storedPassword, string inputPassword)
     {
+        if (storedPassword is null)
+            throw new ArgumentNullException(nameof(storedPassword));
+        if (inputPassword is null)
+            throw new ArgumentNullException(nameof(inputPassword));
+
         string hashedInput = ComputeMd5(inputPassword);
 
         bool isValid = string.Equals(

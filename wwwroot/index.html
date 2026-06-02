@@ -1062,6 +1062,10 @@
             const row = fechaEl.closest("tr");
             if (!row) return;
 
+            // Extract TipoEntidad from the first <td> of the row so it is preserved
+            // when click handlers are rebuilt below.
+            const tipoEntidad = row.cells[0]?.textContent || "";
+
             const actionWrapper = row.querySelector(".action-buttons");
             if (!actionWrapper) return;
 
@@ -1081,7 +1085,7 @@
                         ? getActualizarLabelDayBased(newFechaDatos)
                         : getActualizarLabel(newFechaDatos);
                     // Update the click handler to use the new fecha
-                    const rowData = { codEnvio, fechadatos: newFechaDatos };
+                    const rowData = { codEnvio, tipoEntidad, fechadatos: newFechaDatos };
                     existingActualizarBtn.onclick = () => executeAction("Actualizar", rowData);
                 } else {
                     // Create the Actualizar button (it wasn't shown before)
@@ -1091,7 +1095,7 @@
                         ? getActualizarLabelDayBased(newFechaDatos)
                         : getActualizarLabel(newFechaDatos);
                     // Store the row data for the click handler
-                    const rowData = { codEnvio, fechadatos: newFechaDatos };
+                    const rowData = { codEnvio, tipoEntidad, fechadatos: newFechaDatos };
                     actualizarBtn.onclick = () => executeAction("Actualizar", rowData);
                     // Insert before the Reprocesar button
                     if (existingReprocesarBtn) {
@@ -1113,7 +1117,7 @@
                     ? getReprocesarLabelDayBased(newFechaDatos)
                     : getReprocesarLabel(newFechaDatos);
                 // Update the click handler to use the new fecha
-                const rowData = { codEnvio, fechadatos: newFechaDatos };
+                const rowData = { codEnvio, tipoEntidad, fechadatos: newFechaDatos };
                 existingReprocesarBtn.onclick = () => executeAction("Reprocesar", rowData);
             }
 

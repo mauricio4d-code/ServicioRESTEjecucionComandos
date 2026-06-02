@@ -29,7 +29,7 @@ public class EtlScheduleRepository
         schedule.Id = Guid.NewGuid();
         schedule.CreatedAt = DateTime.UtcNow;
         schedule.UpdatedAt = DateTime.UtcNow;
-        _logger.LogInformation("Creating new ETL schedule in database for code {Codigo}, type {TipoEntidad}.", schedule.Codigo, schedule.TipoEntidad);
+        _logger.LogInformation("Creating new ETL schedule in database with Params: {Params}.", schedule.Params);
         await _context.EtlSchedules.AddAsync(schedule);
         await _context.SaveChangesAsync();
         _logger.LogInformation("ETL schedule created successfully in database with Id {ScheduleId}.", schedule.Id);

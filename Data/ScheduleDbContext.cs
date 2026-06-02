@@ -34,16 +34,13 @@ public class ScheduleDbContext : DbContext
             entity.HasKey(e => e.Id);
 
             entity.Property(e => e.Id).HasColumnName("Id");
-            entity.Property(e => e.CodEnvio).HasColumnName("CodEnvio").IsRequired().HasMaxLength(100);
-            entity.Property(e => e.TipoEntidad).HasColumnName("TipoEntidad").IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Codigo).HasColumnName("Codigo").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Params).HasColumnName("Params");
             entity.Property(e => e.CronExpression).HasColumnName("CronExpression").IsRequired().HasMaxLength(100);
             entity.Property(e => e.IsActive).HasColumnName("IsActive");
             entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
             entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
 
             entity.HasIndex(e => e.IsActive);
-            entity.HasIndex(e => e.Codigo);
         });
     }
 }

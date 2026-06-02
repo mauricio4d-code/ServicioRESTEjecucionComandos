@@ -14,7 +14,6 @@ public class EtlJobService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly CommandExecutor _executor;
     private readonly ILogger<EtlJobService> _logger;
-    private readonly string[] _dailyCodes;
     private readonly SemaphoreSlim _semaphore;
 
     /// <summary>
@@ -29,7 +28,6 @@ public class EtlJobService
         _scopeFactory = scopeFactory;
         _executor = executor;
         _logger = logger;
-        _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
         var maxParallel = configuration.GetValue<int>("QueueConfig:MaxParallelExecutions", 1);
         _semaphore = new SemaphoreSlim(maxParallel, maxParallel);
         _logger.LogInformation("EtlJobService initialized with MaxParallelExecutions = {MaxParallel}.", maxParallel);
@@ -97,16 +95,36 @@ public class EtlJobService
     }
 
     /// <summary>
-    /// Enqueues a scheduled ETL execution via Hangfire.
+    /// Enqueues a scheduled ETL execution via Hangfire, creating a history record in the scheduled table.
     /// </summary>
     public async Task<Guid> EnqueueScheduledAsync(EtlSchedule schedule)
     {
-        return await EnqueueManualAsync(
-            schedule.TipoEntidad,
-            schedule.CodEnvio,
-            DateOnly.FromDateTime(DateTime.UtcNow),
-            schedule.Codigo,
-            triggerType: "PROGRAMADO");
+        Guid historyId;
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var scheduledRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryScheduledRepository>();
+
+            // Create ETLExecutionHistoryScheduled record with PENDIENTE status
+            var history = new ETLExecutionHistoryScheduled
+            {
+                ScheduleId = schedule.Id,
+                Params = schedule.Params,
+                Status = "PENDIENTE"
+            };
+
+            _logger.LogInformation("[DB] Inserting new ETLExecutionHistoryScheduled record with status PENDIENTE for ScheduleId={ScheduleId}.", schedule.Id);
+            await scheduledRepo.CreateAsync(history);
+            historyId = history.Id;
+        }
+
+        _logger.LogInformation("Created ETLExecutionHistoryScheduled {HistoryId} for ScheduleId {ScheduleId}.", historyId, schedule.Id);
+
+        // Enqueue in Hangfire
+        BackgroundJob.Enqueue(
+            () => ExecuteScheduledJobByHistoryIdAsync(historyId));
+
+        _logger.LogInformation("Enqueued scheduled ETL job for HistoryId {HistoryId} via Hangfire.", historyId);
+        return historyId;
     }
 
     /// <summary>
@@ -118,8 +136,6 @@ public class EtlJobService
     {
         _logger.LogInformation("Starting scheduled ETL job for ScheduleId {ScheduleId}.", scheduleId);
 
-        EtlSchedule? schedule = null;
-
         try
         {
             // Load schedule from database in a scope
@@ -127,28 +143,121 @@ public class EtlJobService
             {
                 var scheduleRepo = scope.ServiceProvider.GetRequiredService<EtlScheduleRepository>();
                 _logger.LogInformation("[DB] Loading EtlSchedule by Id {ScheduleId} from schedules table.", scheduleId);
-                schedule = await scheduleRepo.GetByIdAsync(scheduleId);
+                var schedule = await scheduleRepo.GetByIdAsync(scheduleId);
                 _logger.LogInformation("[DB] Schedule load completed. Schedule found: {ScheduleFound}.", schedule != null);
-            }
 
-            if (schedule == null || !schedule.IsActive)
-            {
-                _logger.LogWarning(
-                    "Schedule {ScheduleId} not found or inactive. Skipping execution.", scheduleId);
-                return;
-            }
+                if (schedule == null || !schedule.IsActive)
+                {
+                    _logger.LogWarning(
+                        "Schedule {ScheduleId} not found or inactive. Skipping execution.", scheduleId);
+                    return;
+                }
 
-            // Delegate to manual enqueue with PROGRAMADO trigger type
-            await EnqueueManualAsync(
-                schedule.TipoEntidad,
-                schedule.CodEnvio,
-                DateOnly.FromDateTime(DateTime.UtcNow),
-                schedule.Codigo,
-                triggerType: "PROGRAMADO");
+                // Delegate to scheduled enqueue
+                await EnqueueScheduledAsync(schedule);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception while triggering scheduled ETL job for ScheduleId {ScheduleId}.", scheduleId);
+        }
+    }
+
+    /// <summary>
+    /// Executes a scheduled ETL job by loading the scheduled history record,
+    /// building the command from Params, running CommandExecutor, and updating the history status.
+    /// Called by Hangfire background jobs for scheduled executions.
+    /// </summary>
+    [AutomaticRetry(Attempts = 3)]
+    public async Task ExecuteScheduledJobByHistoryIdAsync(Guid historyId)
+    {
+        _logger.LogInformation("Starting scheduled ETL job for ScheduledHistoryId {HistoryId}.", historyId);
+
+        bool slotAcquired = false;
+        try
+        {
+            // Wait for an execution slot before marking as EN PROCESO.
+            _logger.LogInformation("Waiting for execution slot for ScheduledHistoryId {HistoryId}.", historyId);
+            await _semaphore.WaitAsync();
+            slotAcquired = true;
+            _logger.LogInformation("Acquired execution slot for ScheduledHistoryId {HistoryId}.", historyId);
+
+            ETLExecutionHistoryScheduled? history = null;
+
+            // Load scheduled history record in a scope
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var scheduledRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryScheduledRepository>();
+                _logger.LogInformation("[DB] Loading ETLExecutionHistoryScheduled by Id {HistoryId}.", historyId);
+                history = await scheduledRepo.GetByIdAsync(historyId);
+                _logger.LogInformation("[DB] Scheduled history load completed. Record found: {HistoryFound}.", history != null);
+            }
+
+            if (history == null)
+            {
+                _logger.LogError("ETLExecutionHistoryScheduled {HistoryId} not found. Cannot execute job.", historyId);
+                return;
+            }
+
+            // Update status to EN PROCESO only after acquiring a slot
+            _logger.LogInformation("[DB] Updating ETLExecutionHistoryScheduled {HistoryId} status to EN PROCESO.", historyId);
+            await UpdateScheduledStatusInScopeAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
+
+            // Build queue item for CommandExecutor using Params directly as command arguments
+            var queueItem = new ExecutionQueueItem
+            {
+                Id = Guid.NewGuid(),
+                HistoryId = historyId,
+                Params = history.Params,
+                Status = "EN PROCESO",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // Execute command
+            var result = await _executor.ExecuteAsync(queueItem);
+
+            // Update final status
+            var status = result.Success ? "EXITOSO" : "FALLIDO";
+            var completedAt = DateTime.UtcNow;
+
+            _logger.LogInformation("[DB] Updating final status to {Status} for ScheduledHistoryId {HistoryId}.", status, historyId);
+            await UpdateScheduledStatusInScopeAsync(
+                historyId,
+                status,
+                exitCode: result.ExitCode,
+                output: result.Output,
+                error: result.Error,
+                completedAt: completedAt);
+
+            if (result.Success)
+            {
+                _logger.LogInformation("Scheduled ETL job {HistoryId} completed successfully.", historyId);
+            }
+            else
+            {
+                _logger.LogWarning("Scheduled ETL job {HistoryId} failed with exit code {ExitCode}.", historyId, result.ExitCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception while executing scheduled ETL job {HistoryId}", historyId);
+
+            if (slotAcquired)
+            {
+                await UpdateScheduledStatusInScopeAsync(
+                    historyId,
+                    "FALLIDO",
+                    error: ex.Message,
+                    completedAt: DateTime.UtcNow);
+            }
+        }
+        finally
+        {
+            if (slotAcquired)
+            {
+                _semaphore.Release();
+                _logger.LogInformation("Released execution slot after processing ScheduledHistoryId {HistoryId}.", historyId);
+            }
         }
     }
 
@@ -166,7 +275,6 @@ public class EtlJobService
         try
         {
             // Wait for an execution slot before marking as EN PROCESO.
-            // This ensures at most MaxParallelExecutions items are ever in EN PROCESO state.
             _logger.LogInformation("Waiting for execution slot for HistoryId {HistoryId}.", historyId);
             await _semaphore.WaitAsync();
             slotAcquired = true;
@@ -194,62 +302,24 @@ public class EtlJobService
             await UpdateStatusInScopeAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
 
             // Determine Start/End dates based on TriggerType.
-            // For MANUAL (Actualizar): FechaDatos already holds the target period
-            //   (computed by the controller before enqueuing), so use it directly.
+            // For MANUAL (Actualizar): FechaDatos already holds the target period.
             // For REPROCESO: uses the same period as FechaDatos.
-            // For PROGRAMADO: advances to the next period after FechaDatos.
             string startDate, endDate;
-            bool isDayBased = _dailyCodes.Contains(history.Codigo, StringComparer.OrdinalIgnoreCase);
+            bool isDayBased = history.Codigo.StartsWith("D", StringComparison.OrdinalIgnoreCase);
             bool isReproceso = history.TriggerType?.Equals("REPROCESO", StringComparison.OrdinalIgnoreCase) == true;
-            bool isProgramado = history.TriggerType?.Equals("PROGRAMADO", StringComparison.OrdinalIgnoreCase) == true;
 
             if (isDayBased)
             {
-                if (isReproceso)
-                {
-                    // Reprocesar: same day period
-                    startDate = history.FechaDatos.ToString("yyyy-MM-dd");
-                    endDate = history.FechaDatos.AddDays(1).ToString("yyyy-MM-dd");
-                }
-                else if (isProgramado)
-                {
-                    // Programado: next day period (FechaDatos = today, target = tomorrow)
-                    var nextDay = history.FechaDatos.AddDays(1);
-                    var nextNextDay = history.FechaDatos.AddDays(2);
-                    startDate = nextDay.ToString("yyyy-MM-dd");
-                    endDate = nextNextDay.ToString("yyyy-MM-dd");
-                }
-                else
-                {
-                    // MANUAL (Actualizar): FechaDatos is already the target day
-                    startDate = history.FechaDatos.ToString("yyyy-MM-dd");
-                    endDate = history.FechaDatos.AddDays(1).ToString("yyyy-MM-dd");
-                }
+                // Day-based: same day period
+                startDate = history.FechaDatos.ToString("yyyy-MM-dd");
+                endDate = history.FechaDatos.AddDays(1).ToString("yyyy-MM-dd");
             }
             else
             {
-                if (isReproceso)
-                {
-                    // Reprocesar: same month period
-                    startDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, 1).ToString("yyyy-MM-dd");
-                    var lastDay = DateTime.DaysInMonth(history.FechaDatos.Year, history.FechaDatos.Month);
-                    endDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, lastDay).ToString("yyyy-MM-dd");
-                }
-                else if (isProgramado)
-                {
-                    // Programado: next month period (FechaDatos = today, target = next month)
-                    var nextMonth = history.FechaDatos.AddMonths(1);
-                    startDate = new DateOnly(nextMonth.Year, nextMonth.Month, 1).ToString("yyyy-MM-dd");
-                    var lastDay = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
-                    endDate = new DateOnly(nextMonth.Year, nextMonth.Month, lastDay).ToString("yyyy-MM-dd");
-                }
-                else
-                {
-                    // MANUAL (Actualizar): FechaDatos is already the target month
-                    startDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, 1).ToString("yyyy-MM-dd");
-                    var lastDay = DateTime.DaysInMonth(history.FechaDatos.Year, history.FechaDatos.Month);
-                    endDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, lastDay).ToString("yyyy-MM-dd");
-                }
+                // Month-based: same month period
+                startDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, 1).ToString("yyyy-MM-dd");
+                var lastDay = DateTime.DaysInMonth(history.FechaDatos.Year, history.FechaDatos.Month);
+                endDate = new DateOnly(history.FechaDatos.Year, history.FechaDatos.Month, lastDay).ToString("yyyy-MM-dd");
             }
 
             // Build queue item for CommandExecutor
@@ -257,13 +327,7 @@ public class EtlJobService
             {
                 Id = Guid.NewGuid(),
                 HistoryId = historyId,
-                TipoEntidad = history.TipoEntidad,
-                CodEnvio = history.CodEnvio,
-                FechaDatos = history.FechaDatos,
-                Code = history.Codigo,
-                Start = startDate,
-                End = endDate,
-                Codesend = history.CodEnvio,
+                Params = $"-code {history.Codigo} -start {startDate} -end {endDate} -codesend {history.CodEnvio}",
                 Status = "EN PROCESO",
                 CreatedAt = DateTime.UtcNow
             };
@@ -272,7 +336,6 @@ public class EtlJobService
             var result = await _executor.ExecuteAsync(queueItem);
 
             // Before updating final status, verify that dtx_seguimiento has a matching record.
-            // This ensures the external ETL actually created its tracking entry before we mark the execution as complete.
             var verificationResult = await VerifyDtxSeguimientoInScopeAsync(history.CodEnvio, history.Codigo);
             var verificationFechaDatos = verificationResult?.FechaDatos;
 
@@ -376,6 +439,31 @@ public class EtlJobService
     {
         using var scope = _scopeFactory.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
+        await repo.UpdateStatusAsync(
+            historyId,
+            status,
+            exitCode: exitCode,
+            output: output,
+            error: error,
+            executedAt: executedAt,
+            completedAt: completedAt);
+    }
+
+    /// <summary>
+    /// Creates a scoped service provider and calls UpdateStatusAsync on ETLExecutionHistoryScheduledRepository,
+    /// ensuring the scoped DbContext is properly disposed after each call.
+    /// </summary>
+    private async Task UpdateScheduledStatusInScopeAsync(
+        Guid historyId,
+        string status,
+        int? exitCode = null,
+        string? output = null,
+        string? error = null,
+        DateTime? executedAt = null,
+        DateTime? completedAt = null)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryScheduledRepository>();
         await repo.UpdateStatusAsync(
             historyId,
             status,

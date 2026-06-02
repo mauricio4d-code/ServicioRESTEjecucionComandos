@@ -248,20 +248,15 @@ using (var scope = app.Services.CreateScope())
         scheduleDbContext.Database.ExecuteSqlRaw(@"
             CREATE TABLE IF NOT EXISTS ""etl_schedule"" (
                 ""Id"" TEXT PRIMARY KEY,
-                ""CodEnvio"" TEXT NOT NULL,
-                ""TipoEntidad"" TEXT NOT NULL,
-                ""Codigo"" TEXT NOT NULL,
+                ""Params"" TEXT,
                 ""CronExpression"" TEXT NOT NULL,
                 ""IsActive"" INTEGER NOT NULL DEFAULT 1,
                 ""CreatedAt"" TEXT NOT NULL,
-                ""UpdatedAt"" TEXT NOT NULL
+                ""UpdatedAt"" TEXT
             );
         ");
         scheduleDbContext.Database.ExecuteSqlRaw(@"
             CREATE INDEX IF NOT EXISTS ""IX_etl_schedule_IsActive"" ON ""etl_schedule"" (""IsActive"");
-        ");
-        scheduleDbContext.Database.ExecuteSqlRaw(@"
-            CREATE INDEX IF NOT EXISTS ""IX_etl_schedule_Codigo"" ON ""etl_schedule"" (""Codigo"");
         ");
         logger.LogInformation("Schedule SQLite database ensured (etl_schedule table created if not exists).");
     }
@@ -328,7 +323,60 @@ using (var scope = app.Services.CreateScope())
 
         serviceDbContext.Database.ExecuteSqlRaw(createTableSql);
         serviceDbContext.Database.ExecuteSqlRaw(createIndexSql);
-        logger.LogInformation("Service database schema ensured via raw SQL (hist_etl_execution table created if not exists).");
+
+        // Create hist_etl_execution_scheduled table
+        string createScheduledTableSql;
+        string createScheduledIndexSql;
+
+        if (serviceDbProvider.ToLower() == "sqlserver")
+        {
+            // SQL Server syntax
+            createScheduledTableSql = @"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'hist_etl_execution_scheduled')
+                BEGIN
+                    CREATE TABLE [hist_etl_execution_scheduled] (
+                        [Id] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                        [ScheduleId] UNIQUEIDENTIFIER NOT NULL,
+                        [Params] NVARCHAR(MAX),
+                        [Status] NVARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                        [ExitCode] INT,
+                        [Output] NVARCHAR(MAX),
+                        [Error] NVARCHAR(MAX),
+                        [ExecutedAt] DATETIME2,
+                        [CompletedAt] DATETIME2,
+                        [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END";
+            createScheduledIndexSql = @"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_scheduled_ScheduleId')
+                    CREATE INDEX [IX_hist_etl_execution_scheduled_ScheduleId] ON [hist_etl_execution_scheduled] ([ScheduleId]);
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_scheduled_Status')
+                    CREATE INDEX [IX_hist_etl_execution_scheduled_Status] ON [hist_etl_execution_scheduled] ([Status]);";
+        }
+        else
+        {
+            // PostgreSQL syntax (default)
+            createScheduledTableSql = @"
+                CREATE TABLE IF NOT EXISTS ""hist_etl_execution_scheduled"" (
+                    ""Id"" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    ""ScheduleId"" UUID NOT NULL,
+                    ""Params"" TEXT,
+                    ""Status"" VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                    ""ExitCode"" INTEGER,
+                    ""Output"" TEXT,
+                    ""Error"" TEXT,
+                    ""ExecutedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CompletedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+                )";
+            createScheduledIndexSql = @"
+                CREATE INDEX IF NOT EXISTS ""IX_hist_etl_execution_scheduled_ScheduleId"" ON ""hist_etl_execution_scheduled"" (""ScheduleId"");
+                CREATE INDEX IF NOT EXISTS ""IX_hist_etl_execution_scheduled_Status"" ON ""hist_etl_execution_scheduled"" (""Status"")";
+        }
+
+        serviceDbContext.Database.ExecuteSqlRaw(createScheduledTableSql);
+        serviceDbContext.Database.ExecuteSqlRaw(createScheduledIndexSql);
+        logger.LogInformation("Service database schema ensured via raw SQL (hist_etl_execution and hist_etl_execution_scheduled tables created if not exists).");
     }
     catch (Exception ex)
     {

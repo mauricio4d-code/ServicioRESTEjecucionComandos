@@ -175,27 +175,18 @@ function renderSchedulesTable(data) {
     tbody.innerHTML = "";
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = "<tr><td colspan='7' style='text-align:center;'>Sin programaciones configuradas</td></tr>";
+        tbody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>Sin programaciones configuradas</td></tr>";
         return;
     }
 
     data.forEach(schedule => {
         const tr = document.createElement("tr");
 
-        // Cod Envio
-        const codEnvioCell = document.createElement("td");
-        codEnvioCell.textContent = schedule.codEnvio || "-";
-        tr.appendChild(codEnvioCell);
-
-        // Tipo Entidad
-        const tipoEntidadCell = document.createElement("td");
-        tipoEntidadCell.textContent = schedule.tipoEntidad || "-";
-        tr.appendChild(tipoEntidadCell);
-
-        // Codigo
-        const codigoCell = document.createElement("td");
-        codigoCell.textContent = schedule.codigo || "-";
-        tr.appendChild(codigoCell);
+        // Params
+        const paramsCell = document.createElement("td");
+        paramsCell.textContent = schedule.params || "-";
+        paramsCell.title = schedule.params || "";
+        tr.appendChild(paramsCell);
 
         // Frequency label (human-readable)
         const cronCell = document.createElement("td");
@@ -239,7 +230,7 @@ function renderSchedulesTable(data) {
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "btn btn-danger";
         deleteBtn.textContent = "Eliminar";
-        deleteBtn.onclick = () => deleteSchedule(schedule.id, schedule.codEnvio);
+        deleteBtn.onclick = () => deleteSchedule(schedule.id, schedule.params);
         actionWrapper.appendChild(deleteBtn);
 
         actionsCell.appendChild(actionWrapper);
@@ -254,9 +245,7 @@ function renderSchedulesTable(data) {
 function openCreateModal() {
     document.getElementById("modalTitle").textContent = "Nueva Programación";
     document.getElementById("scheduleId").value = "";
-    document.getElementById("codEnvio").value = "";
-    document.getElementById("tipoEntidad").value = "";
-    document.getElementById("codigo").value = "";
+    document.getElementById("params").value = "";
     document.getElementById("isActive").checked = true;
     document.getElementById("isActiveGroup").style.display = "none";
 
@@ -282,9 +271,7 @@ function openCreateModal() {
 function openEditModal(schedule) {
     document.getElementById("modalTitle").textContent = "Editar Programación";
     document.getElementById("scheduleId").value = schedule.id;
-    document.getElementById("codEnvio").value = schedule.codEnvio;
-    document.getElementById("tipoEntidad").value = schedule.tipoEntidad;
-    document.getElementById("codigo").value = schedule.codigo;
+    document.getElementById("params").value = schedule.params || "";
     document.getElementById("isActive").checked = schedule.isActive;
     document.getElementById("isActiveGroup").style.display = "block";
 
@@ -347,9 +334,7 @@ async function saveSchedule(event) {
     }
 
     const id = document.getElementById("scheduleId").value;
-    const codEnvio = document.getElementById("codEnvio").value.trim();
-    const tipoEntidad = document.getElementById("tipoEntidad").value.trim();
-    const codigo = document.getElementById("codigo").value.trim();
+    const params = document.getElementById("params").value.trim() || null;
     const isActive = document.getElementById("isActive").checked;
 
     const saveBtn = document.getElementById("saveBtn");
@@ -364,9 +349,7 @@ async function saveSchedule(event) {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    codEnvio,
-                    tipoEntidad,
-                    codigo,
+                    params,
                     cronExpression,
                     isActive
                 })
@@ -377,9 +360,7 @@ async function saveSchedule(event) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    codEnvio,
-                    tipoEntidad,
-                    codigo,
+                    params,
                     cronExpression
                 })
             });
@@ -426,8 +407,8 @@ async function toggleSchedule(id) {
 // ========================
 //  Delete schedule
 // ========================
-async function deleteSchedule(id, codEnvio) {
-    if (!confirm(`¿Está seguro de eliminar la programación "${codEnvio}"?`)) {
+async function deleteSchedule(id, params) {
+    if (!confirm(`¿Está seguro de eliminar la programación "${params || 'sin parametros'}"?`)) {
         return;
     }
 

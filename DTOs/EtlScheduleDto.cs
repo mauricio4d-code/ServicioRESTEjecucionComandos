@@ -6,19 +6,10 @@ namespace ServicioRESTEjecucionComandos.DTOs;
 public class CreateEtlScheduleDto
 {
     /// <summary>
-    /// The sending code identifier for the entity.
+    /// Plain string command-line arguments for this schedule execution.
+    /// Optional - when null or empty, the command executes with no additional arguments.
     /// </summary>
-    public string? CodEnvio { get; set; }
-
-    /// <summary>
-    /// The entity type associated with this schedule.
-    /// </summary>
-    public string? TipoEntidad { get; set; }
-
-    /// <summary>
-    /// The database code to execute.
-    /// </summary>
-    public string? Codigo { get; set; }
+    public string? Params { get; set; }
 
     /// <summary>
     /// Cron expression defining the schedule frequency.
@@ -32,19 +23,10 @@ public class CreateEtlScheduleDto
 public class UpdateEtlScheduleDto
 {
     /// <summary>
-    /// The sending code identifier for the entity.
+    /// Plain string command-line arguments for this schedule execution.
+    /// Optional - when null or empty, the command executes with no additional arguments.
     /// </summary>
-    public string? CodEnvio { get; set; }
-
-    /// <summary>
-    /// The entity type associated with this schedule.
-    /// </summary>
-    public string? TipoEntidad { get; set; }
-
-    /// <summary>
-    /// The database code to execute.
-    /// </summary>
-    public string? Codigo { get; set; }
+    public string? Params { get; set; }
 
     /// <summary>
     /// Cron expression defining the schedule frequency.
@@ -68,19 +50,9 @@ public class EtlScheduleDto
     public Guid Id { get; set; }
 
     /// <summary>
-    /// The sending code identifier for the entity.
+    /// Plain string command-line arguments for this schedule execution.
     /// </summary>
-    public string CodEnvio { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The entity type associated with this schedule.
-    /// </summary>
-    public string TipoEntidad { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The database code to execute.
-    /// </summary>
-    public string Codigo { get; set; } = string.Empty;
+    public string? Params { get; set; }
 
     /// <summary>
     /// Cron expression defining the schedule frequency.

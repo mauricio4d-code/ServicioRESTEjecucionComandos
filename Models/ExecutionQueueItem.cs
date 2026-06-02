@@ -16,39 +16,10 @@ public class ExecutionQueueItem
     public Guid HistoryId { get; set; }
 
     /// <summary>
-    /// The entity type associated with this execution.
+    /// Plain string command-line arguments for this execution.
+    /// Optional - when null or empty, the command executes with no additional arguments.
     /// </summary>
-    public string TipoEntidad { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The sending code identifier for the entity.
-    /// </summary>
-    public string CodEnvio { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The data date associated with this execution.
-    /// </summary>
-    public DateOnly FechaDatos { get; set; }
-
-    /// <summary>
-    /// The code parameter for the Datax command.
-    /// </summary>
-    public string Code { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The start date parameter for the Datax command.
-    /// </summary>
-    public string Start { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The end date parameter for the Datax command.
-    /// </summary>
-    public string End { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The codesend parameter for the Datax command (dynamic per-request).
-    /// </summary>
-    public string Codesend { get; set; } = string.Empty;
+    public string? Params { get; set; }
 
     /// <summary>
     /// Current status of the execution item: PENDIENTE, EN PROCESO, EXITOSO, FALLIDO.

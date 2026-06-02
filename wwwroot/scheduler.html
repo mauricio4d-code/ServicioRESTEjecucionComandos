@@ -528,9 +528,7 @@
             <table>
                 <thead>
                     <tr>
-                        <th>Cod Envío</th>
-                        <th>Tipo Entidad</th>
-                        <th>Código</th>
+                        <th>Parametros</th>
                         <th>Frecuencia</th>
                         <th>Estado</th>
                         <th>Creado</th>
@@ -550,16 +548,9 @@
             <form id="scheduleForm" onsubmit="saveSchedule(event)">
                 <input type="hidden" id="scheduleId" />
                 <div class="form-group">
-                    <label for="codEnvio">Cod Envío</label>
-                    <input type="text" id="codEnvio" required placeholder="Ej: REP001" />
-                </div>
-                <div class="form-group">
-                    <label for="tipoEntidad">Tipo Entidad</label>
-                    <input type="text" id="tipoEntidad" required placeholder="Ej: Reporte" />
-                </div>
-                <div class="form-group">
-                    <label for="codigo">Código</label>
-                    <input type="text" id="codigo" required placeholder="Ej: SANTOS001" />
+                    <label for="params">Parametros</label>
+                    <input type="text" id="params" placeholder="Ej: --reporte REP001 --fecha 2024-01-01" />
+                    <small class="help-text">Argumentos de línea de comandos para esta ejecución (opcional)</small>
                 </div>
                 <div class="frequency-section">
                     <label>Frecuencia</label>

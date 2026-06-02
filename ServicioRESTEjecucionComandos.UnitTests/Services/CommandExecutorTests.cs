@@ -47,7 +47,7 @@ public class CommandExecutorTests
     {
         // Arrange
         var executor = new CommandExecutor(
-            "powershell.exe",
+            "hostname.exe",     // Without arguments, print the PC name and end.
             _loggerMock.Object);
 
         var item = new ExecutionQueueItem
@@ -72,7 +72,7 @@ public class CommandExecutorTests
     {
         // Arrange
         var executor = new CommandExecutor(
-            "powershell.exe",
+            "hostname.exe",     // Without arguments, print the PC name and end.
             _loggerMock.Object);
 
         var item = new ExecutionQueueItem

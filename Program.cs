@@ -11,6 +11,7 @@ using ServicioRESTEjecucionComandos.Interfaces;
 using ServicioRESTEjecucionComandos.Repositories;
 using ServicioRESTEjecucionComandos.Hubs;
 using ServicioRESTEjecucionComandos.Services;
+using ServicioRESTEjecucionComandos.HealthChecks;
 
 // -----------------------------------------------------------------------
 // Ensure Logs directory exists before starting
@@ -158,6 +159,16 @@ builder.Services.AddSignalR();
 
 // Register ExecutionNotifier as singleton (broadcasts to SignalR clients)
 builder.Services.AddSingleton<ExecutionNotifier>();
+
+// -----------------------------------------------------------------------
+// Health Checks registration
+// -----------------------------------------------------------------------
+builder.Services.AddHealthChecks()
+    .AddCheck<AuthDbHealthCheck>("auth_database", tags: new[] { "database" })
+    .AddCheck<ServiceDbHealthCheck>("service_database", tags: new[] { "database" })
+    .AddCheck<SqliteDbHealthCheck>("sqlite_database", tags: new[] { "database" })
+    .AddCheck<HangfireHealthCheck>("hangfire", tags: new[] { "background-jobs" })
+    .AddCheck<UptimeHealthCheck>("uptime", tags: new[] { "system" });
 
 // -----------------------------------------------------------------------
 // Hangfire configuration (no dashboard, uses existing SQLite database)
@@ -459,6 +470,36 @@ app.MapControllers();
 
 // Map SignalR hub for real-time ETL notifications
 app.MapHub<EtlNotificationHub>("/etlNotifications");
+
+// -----------------------------------------------------------------------
+// Health Check endpoint (unauthenticated - for external monitoring)
+// -----------------------------------------------------------------------
+app.MapHealthChecks("/api/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+
+        var status = report.Status.ToString().ToLower();
+        var components = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+
+        var response = new
+        {
+            Status = report.Status.ToString(),
+            Timestamp = DateTime.UtcNow.ToString("o"),
+            Components = report.Entries.ToDictionary(
+                entry => entry.Key,
+                entry => new
+                {
+                    Status = entry.Value.Status.ToString(),
+                    Description = entry.Value.Description,
+                    Data = entry.Value.Data
+                })
+        };
+
+        await context.Response.WriteAsJsonAsync(response);
+    }
+});
 
 // -----------------------------------------------------------------------
 // Log the service URL(s) for easy access

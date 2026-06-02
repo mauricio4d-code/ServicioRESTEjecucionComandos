@@ -113,6 +113,7 @@ builder.Services.AddScoped<RefreshTokenRepository>();
 builder.Services.AddScoped<AuthAuditLogRepository>();
 builder.Services.AddScoped<ETLExecutionHistoryRepository>();
 builder.Services.AddScoped<EtlScheduleRepository>();
+builder.Services.AddScoped<ETLExecutionHistoryScheduledRepository>();
 
 // -----------------------------------------------------------------------
 // Service registrations

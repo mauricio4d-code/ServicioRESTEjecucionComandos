@@ -23,6 +23,7 @@ public class ETLExecutorController : ControllerBase
     private readonly ServiceDbContext _serviceDbContext;
     private readonly ILogger<ETLExecutorController> _logger;
     private readonly string[] _dailyCodes;
+    private readonly string[] _excludedCodes;
 
     /// <summary>
     /// Initializes a new instance of ETLExecutorController.
@@ -39,6 +40,7 @@ public class ETLExecutorController : ControllerBase
         _serviceDbContext = serviceDbContext;
         _logger = logger;
         _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
+        _excludedCodes = configuration.GetSection("QueueConfig:ExcludedCodes").Get<string[]>() ?? Array.Empty<string>();
     }
 
     // -----------------------------------------------------------------------
@@ -48,14 +50,29 @@ public class ETLExecutorController : ControllerBase
     /// <summary>
     /// Returns all records from the base_datos table for populating the dropdown,
     /// enriched with an IsDayBased flag for codes configured in QueueConfig:DailyCodes.
+    /// Codes listed in QueueConfig:ExcludedCodes are filtered out at the SQL level.
     /// </summary>
     [HttpGet("base-datos")]
     public async Task<IActionResult> GetBaseDatos()
     {
-        _logger.LogInformation("[DB] Querying base_datos table for all records (SELECT codigo, nombre FROM base_datos).");
-        var baseDatosList = await _serviceDbContext.Database
-            .SqlQueryRaw<BaseDatos>("SELECT codigo, nombre FROM base_datos")
-            .ToListAsync();
+        string sql;
+        object[]? sqlParams = null;
+        if (_excludedCodes.Length > 0)
+        {
+            var excludedPlaceholders = string.Join(", ", _excludedCodes.Select((_, i) => $"@p{i}"));
+            sql = $"SELECT codigo, nombre FROM base_datos WHERE codigo NOT IN ({excludedPlaceholders})";
+            sqlParams = _excludedCodes;
+        }
+        else
+        {
+            sql = "SELECT codigo, nombre FROM base_datos";
+        }
+
+        _logger.LogInformation("[DB] Querying base_datos table for all records ({Sql}).", sql.Replace("@p", ""));
+        var baseDatosList = sqlParams is not null
+            ? await _serviceDbContext.Database.SqlQueryRaw<BaseDatos>(sql, sqlParams).ToListAsync()
+            : await _serviceDbContext.Database.SqlQueryRaw<BaseDatos>(sql).ToListAsync();
+
         _logger.LogInformation("[DB] base_datos query completed. Records returned: {Count}.", baseDatosList.Count);
 
         var response = baseDatosList.Select(item => new BaseDatosResponse

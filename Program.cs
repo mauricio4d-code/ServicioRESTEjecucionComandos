@@ -9,6 +9,7 @@ using Serilog;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Interfaces;
 using ServicioRESTEjecucionComandos.Repositories;
+using ServicioRESTEjecucionComandos.Hubs;
 using ServicioRESTEjecucionComandos.Services;
 
 // -----------------------------------------------------------------------
@@ -146,6 +147,14 @@ builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
 // Register ScheduleSyncService as hosted service (syncs etl_schedule with Hangfire recurring jobs)
 builder.Services.AddHostedService<ScheduleSyncService>();
+
+// -----------------------------------------------------------------------
+// SignalR configuration (real-time notifications for scheduled ETL tasks)
+// -----------------------------------------------------------------------
+builder.Services.AddSignalR();
+
+// Register ExecutionNotifier as singleton (broadcasts to SignalR clients)
+builder.Services.AddSingleton<ExecutionNotifier>();
 
 // -----------------------------------------------------------------------
 // Hangfire configuration (no dashboard, uses existing SQLite database)
@@ -403,6 +412,9 @@ app.MapGet("/", () => Results.Redirect("/index.html"));
 
 // Map API controllers
 app.MapControllers();
+
+// Map SignalR hub for real-time ETL notifications
+app.MapHub<EtlNotificationHub>("/etlNotifications");
 
 // -----------------------------------------------------------------------
 // Log the service URL(s) for easy access

@@ -15,6 +15,7 @@ public class EtlJobService
     private readonly CommandExecutor _executor;
     private readonly ILogger<EtlJobService> _logger;
     private readonly SemaphoreSlim _semaphore;
+    private readonly ExecutionNotifier _notifier;
 
     /// <summary>
     /// Initializes a new instance of EtlJobService.
@@ -23,7 +24,8 @@ public class EtlJobService
         IServiceScopeFactory scopeFactory,
         CommandExecutor executor,
         ILogger<EtlJobService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ExecutionNotifier notifier)
     {
         _scopeFactory = scopeFactory;
         _executor = executor;
@@ -31,6 +33,7 @@ public class EtlJobService
         var maxParallel = configuration.GetValue<int>("QueueConfig:MaxParallelExecutions", 1);
         _semaphore = new SemaphoreSlim(maxParallel, maxParallel);
         _logger.LogInformation("EtlJobService initialized with MaxParallelExecutions = {MaxParallel}.", maxParallel);
+        _notifier = notifier;
     }
 
     /// <summary>
@@ -203,6 +206,9 @@ public class EtlJobService
             _logger.LogInformation("[DB] Updating ETLExecutionHistoryScheduled {HistoryId} status to EN PROCESO.", historyId);
             await UpdateScheduledStatusInScopeAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
 
+            // Notify connected clients that the scheduled task has started
+            await _notifier.BroadcastTaskStartedAsync(history.Params);
+
             // Build queue item for CommandExecutor using Params directly as command arguments
             var queueItem = new ExecutionQueueItem
             {
@@ -237,6 +243,9 @@ public class EtlJobService
             {
                 _logger.LogWarning("Scheduled ETL job {HistoryId} failed with exit code {ExitCode}.", historyId, result.ExitCode);
             }
+
+            // Notify connected clients that the scheduled task has completed
+            await _notifier.BroadcastTaskCompletedAsync(result.Success, history.Params);
         }
         catch (Exception ex)
         {
@@ -249,6 +258,9 @@ public class EtlJobService
                     "FALLIDO",
                     error: ex.Message,
                     completedAt: DateTime.UtcNow);
+
+                // Notify connected clients that the scheduled task failed
+                await _notifier.BroadcastTaskCompletedAsync(false, null);
             }
         }
         finally

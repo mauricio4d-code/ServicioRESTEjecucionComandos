@@ -92,6 +92,9 @@ builder.Services.AddDbContext<ServiceDbContext>(options =>
         case "sqlserver":
             options.UseSqlServer(serviceConnectionString);
             break;
+        case "sqlite": // Added SQLite option for service database to allow full in-memory testing and simpler local development without needing PostgreSQL or SQL Server.
+            options.UseSqlite(serviceConnectionString);
+            break;
         default:
             options.UseNpgsql(serviceConnectionString);
             break;
@@ -307,11 +310,32 @@ using (var scope = app.Services.CreateScope())
                 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_Status')
                     CREATE INDEX [IX_hist_etl_execution_Status] ON [hist_etl_execution] ([Status]);";
         }
+        else if (serviceDbProvider.ToLower() == "sqlite")
+        {
+            // SQLite syntax
+            createTableSql = @"
+                CREATE TABLE IF NOT EXISTS ""hist_etl_execution"" (
+                    ""Id"" TEXT PRIMARY KEY,
+                    ""CodEnvio"" TEXT NOT NULL,
+                    ""TipoEntidad"" TEXT NOT NULL,
+                    ""FechaDatos"" TEXT NOT NULL,
+                    ""Codigo"" TEXT NOT NULL,
+                    ""Status"" TEXT NOT NULL DEFAULT 'PENDIENTE',
+                    ""TriggerType"" TEXT NOT NULL DEFAULT 'MANUAL',
+                    ""ExitCode"" INTEGER,
+                    ""Output"" TEXT,
+                    ""Error"" TEXT,
+                    ""ExecutedAt"" TEXT,
+                    ""CompletedAt"" TEXT
+                )";
+            createIndexSql = @"
+                CREATE INDEX IF NOT EXISTS ""IX_hist_etl_execution_Status"" ON ""hist_etl_execution"" (""Status"")";
+        }
         else
         {
             // PostgreSQL syntax (default)
             serviceDbContext.Database.ExecuteSqlRaw(@"CREATE EXTENSION IF NOT EXISTS pgcrypto;");
-            
+
             createTableSql = @"
                 CREATE TABLE IF NOT EXISTS ""hist_etl_execution"" (
                     ""Id"" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -362,6 +386,26 @@ using (var scope = app.Services.CreateScope())
                     CREATE INDEX [IX_hist_etl_execution_scheduled_ScheduleId] ON [hist_etl_execution_scheduled] ([ScheduleId]);
                 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_scheduled_Status')
                     CREATE INDEX [IX_hist_etl_execution_scheduled_Status] ON [hist_etl_execution_scheduled] ([Status]);";
+        }
+        else if (serviceDbProvider.ToLower() == "sqlite")
+        {
+            // SQLite syntax
+            createScheduledTableSql = @"
+                CREATE TABLE IF NOT EXISTS ""hist_etl_execution_scheduled"" (
+                    ""Id"" TEXT PRIMARY KEY,
+                    ""ScheduleId"" TEXT NOT NULL,
+                    ""Params"" TEXT,
+                    ""Status"" TEXT NOT NULL DEFAULT 'PENDIENTE',
+                    ""ExitCode"" INTEGER,
+                    ""Output"" TEXT,
+                    ""Error"" TEXT,
+                    ""ExecutedAt"" TEXT,
+                    ""CompletedAt"" TEXT,
+                    ""CreatedAt"" TEXT NOT NULL DEFAULT (datetime('now'))
+                )";
+            createScheduledIndexSql = @"
+                CREATE INDEX IF NOT EXISTS ""IX_hist_etl_execution_scheduled_ScheduleId"" ON ""hist_etl_execution_scheduled"" (""ScheduleId"");
+                CREATE INDEX IF NOT EXISTS ""IX_hist_etl_execution_scheduled_Status"" ON ""hist_etl_execution_scheduled"" (""Status"")";
         }
         else
         {

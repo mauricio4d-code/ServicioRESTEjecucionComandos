@@ -107,17 +107,19 @@ public class ETLExecutorController : ControllerBase
             var results = await _serviceDbContext.Database
                 .SqlQueryRaw<QueryResult>(
                     @"WITH latest_exec AS (
-                        SELECT DISTINCT ON (""CodEnvio"", ""TipoEntidad"", ""FechaDatos"")
+                        SELECT DISTINCT ON (""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"")
                             ""CodEnvio"",
                             ""TipoEntidad"",
                             ""FechaDatos"",
+                            ""Codigo"",
                             ""Status"" AS estado_ejecucion,
                             ""TriggerType"" AS trigger_type,
                             ""CompletedAt"" AS ultima_fecha_ejecucion,
                             ""Output"" AS ""output"",
                             ""Error"" AS ""error""
                         FROM hist_etl_execution
-                        ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""CompletedAt"" DESC NULLS LAST
+                        WHERE ""Codigo"" = {0}
+                        ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"", ""CompletedAt"" DESC NULLS LAST
                     ),
                     seguimiento AS (
                         SELECT
@@ -136,6 +138,7 @@ public class ETLExecutorController : ControllerBase
                             ON le.""CodEnvio"" = e.cod_envio
                             AND le.""TipoEntidad"" = s.tipoentidad
                             AND le.""FechaDatos"" = s.fechadatos
+                            AND le.""Codigo"" = {0}
                         WHERE e.cod_envio IS NOT NULL
                             AND e.cod_envio <> ''
                             AND s.codigo = {0}

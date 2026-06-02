@@ -16,6 +16,7 @@ public class EtlJobService
     private readonly ILogger<EtlJobService> _logger;
     private readonly SemaphoreSlim _semaphore;
     private readonly ExecutionNotifier _notifier;
+    private readonly string[] _dailyCodes;
 
     /// <summary>
     /// Initializes a new instance of EtlJobService.
@@ -34,6 +35,7 @@ public class EtlJobService
         _semaphore = new SemaphoreSlim(maxParallel, maxParallel);
         _logger.LogInformation("EtlJobService initialized with MaxParallelExecutions = {MaxParallel}.", maxParallel);
         _notifier = notifier;
+        _dailyCodes = configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
     }
 
     /// <summary>
@@ -317,7 +319,7 @@ public class EtlJobService
             // For MANUAL (Actualizar): FechaDatos already holds the target period.
             // For REPROCESO: uses the same period as FechaDatos.
             string startDate, endDate;
-            bool isDayBased = history.Codigo.StartsWith("D", StringComparison.OrdinalIgnoreCase);
+            bool isDayBased = _dailyCodes.Contains(history.Codigo, StringComparer.OrdinalIgnoreCase);
             bool isReproceso = history.TriggerType?.Equals("REPROCESO", StringComparison.OrdinalIgnoreCase) == true;
 
             if (isDayBased)

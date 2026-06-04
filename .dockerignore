@@ -35,7 +35,7 @@ packages/
 # Local config overrides
 *.local.json
 
-# Test projects (not needed in runtime image)
+# Test projects (not needed in Docker build)
 ServicioRESTEjecucionComandos.UnitTests/
 ServicioRESTEjecucionComandos.IntegrationTests/
 
@@ -52,7 +52,5 @@ plans/
 *.temp
 *.cache
 
-# Compiled artifacts
-*.exe
-*.dll
-*.pdb
+# Solution file - not needed since we build csproj directly
+*.sln

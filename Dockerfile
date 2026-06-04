@@ -2,8 +2,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy solution and project files first for better layer caching
-COPY ServicioRESTEjecucionComandos.sln .
+# Copy project file first for better layer caching
 COPY ServicioRESTEjecucionComandos.csproj .
 
 # Restore dependencies (cached if csproj unchanged)

@@ -11,12 +11,11 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://0.0.0.0:5000
-      # Override connection strings as needed for your environment:
-      # - ConnectionStrings__AuthDatabase=Data Source=/data/auth/analyze.db3
-      # - ConnectionStrings__ServiceDatabase=Host=postgres;Database=asfiws;Username=postgres;Password=yourpassword
+      - ConnectionStrings__RefreshTokenDatabase=Data Source=/data/ServicioRESTEjecucionComandos.db
+      - ConnectionStrings__ServiceDatabase=Host=host.docker.internal;Port=5433;Database=asfiws;Username=postgres;Password=q23tgsdf5677!
     volumes:
-      - sqlite-data:/app          # Persist ServicioRESTEjecucionComandos.db
-      - logs-data:/app/Logs       # Persist Serilog logs
+      - sqlite-data:/data          # Persist ServicioRESTEjecucionComandos.db
+      - logs-data:/app/Logs        # Persist Serilog logs
     restart: unless-stopped
     networks:
       - monitoring

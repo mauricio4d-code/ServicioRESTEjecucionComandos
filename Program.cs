@@ -24,6 +24,11 @@ if (!Directory.Exists("Logs"))
 var builder = WebApplication.CreateBuilder(args);
 
 // -----------------------------------------------------------------------
+// Windows Service support (dual-mode: works as console and Windows Service)
+// -----------------------------------------------------------------------
+builder.Host.UseWindowsService();
+
+// -----------------------------------------------------------------------
 // Serilog configuration (reads from appsettings.json Serilog section)
 // -----------------------------------------------------------------------
 builder.Host.UseSerilog((context, configuration) =>

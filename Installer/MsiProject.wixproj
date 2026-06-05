@@ -1,0 +1,22 @@
+<Project Sdk="WixToolset.Sdk/4.0.6">
+
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <SuppressIces>ICE60;ICE61;ICE042;ICE17;ICE20;ICE31;ICE80</SuppressIces>
+    <AppVersion>1.0.0</AppVersion>
+    <PublishOutputPath>publish</PublishOutputPath>
+    <DefineConstants>PublishOutputPath=$(PublishOutputPath)</DefineConstants>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Bundle.wxs;Bundle.wxl</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Bal.wixext" Version="4.0.6" />
+    <None Include="appsettings.json.template" />
+    <None Include="Scripts\Configure-AppSettings.ps1" />
+    <None Include="Scripts\Install-Service.ps1" />
+    <None Include="Scripts\Uninstall-Service.ps1" />
+    <None Include="Scripts\Install-ScheduledTask.ps1" />
+    <None Include="Scripts\Uninstall-ScheduledTask.ps1" />
+  </ItemGroup>
+
+</Project>

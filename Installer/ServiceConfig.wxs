@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <!--
+      Service configuration is handled by PowerShell custom actions.
+      This Fragment provides a placeholder component for the service
+      registration in the MSI component table (for proper uninstall tracking).
+    -->
+    <Component Id="ServiceConfigComponent" Directory="INSTALLFOLDER" Guid="*">
+      <RegistryKey Root="HKLM" Key="SOFTWARE\ServicioRESTEjecucionComandos\Service">
+        <RegistryValue Name="ServiceName" Value="ServicioRESTEjecucionComandos" Type="string" />
+        <RegistryValue Name="ServicePort" Value="[ServicePort]" Type="string" />
+        <RegistryValue Name="StartAfterInstall" Value="[StartServiceAfterInstall]" Type="string" />
+      </RegistryKey>
+    </Component>
+  </Fragment>
+</Wix>

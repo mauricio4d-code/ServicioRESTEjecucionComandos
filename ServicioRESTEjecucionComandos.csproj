@@ -47,4 +47,8 @@
     <Content Remove="ServicioRESTEjecucionComandos.IntegrationTests/**/*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Monitor-Health.ps1" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

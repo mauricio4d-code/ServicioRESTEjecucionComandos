@@ -47,6 +47,8 @@ try {
                 $idx = $_.IndexOf('=')
                 $key = $_.Substring(0, $idx).Trim()
                 $val = $_.Substring($idx + 1)
+                # Strip surrounding quotes that may come from MSI command-line expansion
+                $val = $val.Trim('"', "'")
                 $params[$key] = $val
             }
         }

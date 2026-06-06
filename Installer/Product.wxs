@@ -326,15 +326,11 @@
     </UI>
 
     <CustomAction Id="RunMyScript"
-                  Directory="INSTALLFOLDER"
-                  Execute="deferred"
-                  Impersonate="no"
-                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Configure-AppSettings.ps1&quot;
-                  &quot;INSTALLFOLDER=[INSTALLFOLDER]&quot;;&quot;ServicePort=[ServicePort]&quot;;&quot;AuthDbProvider=[AuthDbProvider]&quot;;&quot;AuthDbConnectionString=[AuthDbConnectionString]&quot;;
-                  &quot;ServiceDbProvider=[ServiceDbProvider]&quot;;&quot;ServiceDbConnectionString=[ServiceDbConnectionString]&quot;;&quot;DataxExePath=[DataxExePath]&quot;;&quot;DailyCodes=[DailyCodes]&quot;;
-                  &quot;ExcludedCodes=[ExcludedCodes]&quot;;&quot;JwtSecretKey=[JwtSecretKey]&quot;;&quot;JwtAccessTokenMinutes=[JwtAccessTokenMinutes]&quot;;&quot;JwtRefreshTokenDays=[JwtRefreshTokenDays]&quot;;
-                  &quot;LogsPath=[LogsPath]&quot;" />
-  
+              Directory="INSTALLFOLDER"
+              Execute="deferred"
+              Impersonate="no"
+              ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Configure-AppSettings.ps1&quot; &quot;INSTALLFOLDER=[INSTALLFOLDER];ServicePort=[ServicePort];AuthDbProvider=[AuthDbProvider];AuthDbConnectionString=[AuthDbConnectionString];ServiceDbProvider=[ServiceDbProvider];ServiceDbConnectionString=[ServiceDbConnectionString];DataxExePath=[DataxExePath];DailyCodes=[DailyCodes];ExcludedCodes=[ExcludedCodes];JwtSecretKey=[JwtSecretKey];JwtAccessTokenMinutes=[JwtAccessTokenMinutes];JwtRefreshTokenDays=[JwtRefreshTokenDays];LogsPath=[LogsPath]&quot;" />
+   
     <!-- Install execute sequence -->
     <InstallExecuteSequence>
       <RemoveExistingProducts Before="InstallInitialize" />

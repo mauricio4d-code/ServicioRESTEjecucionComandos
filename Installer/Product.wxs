@@ -325,23 +325,25 @@
       </Dialog>
     </UI>
 
+    <CustomAction Id="RunMyScript"
+                  Directory="INSTALLFOLDER"
+                  Execute="deferred"
+                  Impersonate="no"
+                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Configure-AppSettings.ps1&quot;
+                  &quot;INSTALLFOLDER=[INSTALLFOLDER]&quot;;&quot;ServicePort=[ServicePort]&quot;;&quot;AuthDbProvider=[AuthDbProvider]&quot;;&quot;AuthDbConnectionString=[AuthDbConnectionString]&quot;;
+                  &quot;ServiceDbProvider=[ServiceDbProvider]&quot;;&quot;ServiceDbConnectionString=[ServiceDbConnectionString]&quot;;&quot;DataxExePath=[DataxExePath]&quot;;&quot;DailyCodes=[DailyCodes]&quot;;
+                  &quot;ExcludedCodes=[ExcludedCodes]&quot;;&quot;JwtSecretKey=[JwtSecretKey]&quot;;&quot;JwtAccessTokenMinutes=[JwtAccessTokenMinutes]&quot;;&quot;JwtRefreshTokenDays=[JwtRefreshTokenDays]&quot;;
+                  &quot;LogsPath=[LogsPath]&quot;" />
+  
     <!-- Install execute sequence -->
     <InstallExecuteSequence>
       <RemoveExistingProducts Before="InstallInitialize" />
       
       <InstallFiles /> 
       
-      <Custom Action="SetConfigureAppSettingsData" After="InstallFiles" Condition="NOT Installed" />
-      <Custom Action="ConfigureAppSettingsDeferred" After="SetConfigureAppSettingsData" Condition="NOT Installed" />
+      <Custom Action="RunMyScript" After="InstallFiles" />
+      <Custom Action="InstallWindowsService" After="RunMyScript" Condition="NOT Installed" />
 
-      <!-- <CustomAction Id="ConfigureAppSettingsDeferred" 
-              BinaryRef="Wix4UtilCA_X64" Directory="INSTALLFOLDER" 
-              ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[ScriptsDir]Configure-AppSettings.ps1&quot; &quot;[WixBundleExecutePackageCacheFolder]&quot;" 
-              Execute="deferred" 
-              Impersonate="no" /> -->
-
-      <Custom Action="InstallWindowsService" After="ConfigureAppSettingsDeferred" Condition="NOT Installed" />
-      
       <Custom Action="StartWindowsService" After="InstallWindowsService" Condition="StartServiceAfterInstall = 1 OR StartServiceAfterInstall = &quot;yes&quot;" />
       <Custom Action="InstallScheduledTaskCA" After="StartWindowsService" Condition="InstallScheduledTask = 1 OR InstallScheduledTask = &quot;yes&quot;" />
 

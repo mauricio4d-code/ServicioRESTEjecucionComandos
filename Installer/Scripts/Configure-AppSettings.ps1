@@ -27,19 +27,19 @@ Write-Log "Starting appsettings.json configuration via CustomActionData"
 $LogPrueba = "D:\debug_ps.txt"
 
 try {
-    # Al inicio del script, fuérzalo a ubicarse en la carpeta donde reside el script 
-    # o en la raíz según lo necesites:
+    # At the beginning of the script, force it to be located in the folder where the script resides.
+    # or at the root, depending on your needs
     $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
     Set-Location $PSScriptRoot
-
-    # --- AQUÍ VA TU CÓDIGO ACTUAL ---
     
-    $caData = $env:CustomActionData
+    # Capture the plain text block sent by the installer
+    #$caData = $env:CustomActionData
+    $caData = $args[0]
     if (-not $caData) {
         throw "Error crítico: El instalador no transfirió los parámetros a CustomActionData."
     }
 
-    # Parseo robusto tolerante a valores vacíos o nulos
+    # Robust parsing tolerant to empty or null values
     $params = @{}
     if ($caData) {
         $caData -split ';' | ForEach-Object {
@@ -52,7 +52,7 @@ try {
         }
     }
 
-    # Mapeo seguro: Si el parámetro no existe o es nulo, se le asigna cadena vacía o por defecto
+    # Safe mapping: If the parameter does not exist or is null, it is assigned an empty string or a default string.
     $InstallFolder             = $params["INSTALLFOLDER"]
     $ServicePort               = if ($params["ServicePort"]) { $params["ServicePort"] } else { "5000" }
     $AuthDbProvider            = if ($params["AuthDbProvider"]) { $params["AuthDbProvider"] } else { "sqlite" }
@@ -66,6 +66,20 @@ try {
     $JwtAccessTokenMinutes     = if ($params["JwtAccessTokenMinutes"]) { $params["JwtAccessTokenMinutes"] } else { "5" }
     $JwtRefreshTokenDays       = if ($params["JwtRefreshTokenDays"]) { $params["JwtRefreshTokenDays"] } else { "30" }
     $LogsPath                  = if ($params["LogsPath"]) { $params["LogsPath"] } else { "" }
+
+    Out-File -FilePath $LogPrueba -InputObject "InstallFolder: $InstallFolder" -Append
+    Out-File -FilePath $LogPrueba -InputObject "ServicePort: $ServicePort" -Append
+    Out-File -FilePath $LogPrueba -InputObject "AuthDbProvider: $AuthDbProvider" -Append
+    Out-File -FilePath $LogPrueba -InputObject "AuthDbConnectionString: $AuthDbConnectionString" -Append
+    Out-File -FilePath $LogPrueba -InputObject "ServiceDbProvider: $ServiceDbProvider" -Append
+    Out-File -FilePath $LogPrueba -InputObject "ServiceDbConnectionString: $ServiceDbConnectionString" -Append
+    Out-File -FilePath $LogPrueba -InputObject "DataxExePath: $DataxExePath" -Append
+    Out-File -FilePath $LogPrueba -InputObject "DailyCodes: $DailyCodes" -Append
+    Out-File -FilePath $LogPrueba -InputObject "ExcludedCodes: $ExcludedCodes" -Append
+    Out-File -FilePath $LogPrueba -InputObject "JwtSecretKey: $JwtSecretKey" -Append
+    Out-File -FilePath $LogPrueba -InputObject "JwtAccessTokenMinutes: $JwtAccessTokenMinutes" -Append
+    Out-File -FilePath $LogPrueba -InputObject "JwtRefreshTokenDays: $JwtRefreshTokenDays" -Append
+    Out-File -FilePath $LogPrueba -InputObject "LogsPath: $LogsPath" -Append
 
     if (-not $InstallFolder) {
         throw "Error crítico: El parámetro INSTALLFOLDER no puede estar vacío."

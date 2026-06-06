@@ -12,7 +12,7 @@ RUN dotnet restore ServicioRESTEjecucionComandos.csproj
 COPY . .
 
 # Publish the application as Release
-RUN dotnet publish ServicioRESTEjecucionComandos.csproj -c Release -o /app/publish --self-contained false
+RUN dotnet publish ServicioRESTEjecucionComandos.csproj -c Release -o /app/publish -r win-x64 --self-contained true
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-windowsservercore-ltsc2022 AS final

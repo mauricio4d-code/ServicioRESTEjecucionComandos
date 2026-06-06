@@ -1,6 +1,9 @@
 <Project Sdk="WixToolset.Sdk/4.0.6">
 
   <PropertyGroup>
+    <InstallerArchitecture>x64</InstallerArchitecture>
+    <Platform>x64</Platform>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
     <OutputType>Package</OutputType>
     <SuppressIces>ICE60;ICE61;ICE042;ICE17;ICE20;ICE31;ICE80</SuppressIces>
     <AppVersion>1.0.0</AppVersion>
@@ -10,6 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="4.0.6" />
     <PackageReference Include="WixToolset.Bal.wixext" Version="4.0.6" />
     <None Include="appsettings.json.template" />
     <None Include="Scripts\Configure-AppSettings.ps1" />

@@ -39,7 +39,7 @@ public class CommandExecutor
     /// </summary>
     /// <param name="item">The queue item containing execution context and dynamic parameters.</param>
     /// <returns>ExecutionResult with exit code, output, and error information.</returns>
-    public async Task<ExecutionResult> ExecuteAsync(ExecutionQueueItem item)
+    public virtual async Task<ExecutionResult> ExecuteAsync(ExecutionQueueItem item)
     {
         var itemId = item.Id;
         var historyId = item.HistoryId;

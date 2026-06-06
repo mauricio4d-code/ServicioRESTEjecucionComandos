@@ -12,7 +12,7 @@
       Language="1033"
       Version="$(var.ProductVersion)"
       Manufacturer="$(var.Manufacturer)"
-      InstallerVersion="500"
+      InstallerVersion="200"
       Compressed="yes"
       UpgradeCode="$(var.UpgradeCode)">
 
@@ -26,6 +26,8 @@
           IncludeMaximum="no"
           MigrateFeatures="yes" />
     </Upgrade>
+
+    <Property Id="WIN64DUALFOLDERS" Value="[~]" />
 
     <!-- Properties with defaults -->
     <Property Id="INSTALLFOLDER" Value="$(var.DefaultInstallFolder)" />
@@ -54,6 +56,7 @@
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="$(var.ProductName)">
         <Directory Id="LogsDir" Name="Logs" />
+        <Directory Id="ScriptsDir" Name="Scripts" />
       </Directory>
     </StandardDirectory>
 
@@ -61,6 +64,7 @@
     <Feature Id="Complete" Title="Complete Installation" Description="Install all components." Level="1" ConfigurableDirectory="INSTALLFOLDER" AllowAdvertise="no">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentGroupRef Id="ConfigFiles" />
+      <ComponentGroupRef Id="ScriptComponents" /> 
       <ComponentRef Id="LogsFolder" />
       <ComponentRef Id="CustomActionsComponent" />
       <ComponentRef Id="ServiceConfigComponent" />
@@ -69,31 +73,50 @@
 
     <!-- Application files component group -->
     <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
-      <Component Id="AppMainExe" Guid="*">
+      <Component Id="AppMainExe">
         <File Source="$(var.PublishPath)\ServicioRESTEjecucionComandos.exe" KeyPath="yes" />
       </Component>
-      <Component Id="AppMainDll" Guid="*">
+      <Component Id="AppMainDll">
         <File Source="$(var.PublishPath)\ServicioRESTEjecucionComandos.dll" KeyPath="yes" />
       </Component>
-      <Component Id="MonitorScript" Guid="*">
+      <Component Id="MonitorScript">
         <File Source="$(var.PublishPath)\Monitor-Health.ps1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
     <!-- Config template component group -->
     <ComponentGroup Id="ConfigFiles" Directory="INSTALLFOLDER">
-      <Component Id="AppSettingsTemplate" Guid="*">
+      <Component Id="AppSettingsTemplate" Guid="d7bfcfa0-888c-48ef-94db-6fdac0fa7986" Bitness="always64">
         <File Source="appsettings.json.template" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
+    <!-- Script components group -->
+    <ComponentGroup Id="ScriptComponents" Directory="ScriptsDir">
+      <Component Id="ConfigureAppSettingsScript" Guid="9d164e1e-49f8-4bf6-864d-05274b633061" Bitness="always64">
+        <File Source="Scripts\Configure-AppSettings.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="InstallServiceScript" Guid="e39d1840-c710-4ed8-8dae-807f621511b9" Bitness="always64">
+        <File Source="Scripts\Install-Service.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="UninstallServiceScript" Guid="5fcc2882-112f-4442-a05c-7e0772882521" Bitness="always64">
+        <File Source="Scripts\Uninstall-Service.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="InstallScheduledTaskScript" Guid="1954dd08-c94f-4593-a448-e27a10504555" Bitness="always64">
+        <File Source="Scripts\Install-ScheduledTask.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="UninstallScheduledTaskScript" Guid="c81cd4c0-5f9e-4545-a552-365037b3c3e4" Bitness="always64">
+        <File Source="Scripts\Uninstall-ScheduledTask.ps1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
     <!-- Logs folder component -->
-    <Component Id="LogsFolder" Directory="LogsDir" Guid="{A1B2C3D4-E5F6-7890-ABCD-EF1234567891}">
+    <Component Id="LogsFolder" Directory="LogsDir" Guid="{A1B2C3D4-E5F6-7890-ABCD-EF1234567891}" Bitness="always64">
       <CreateFolder />
     </Component>
 
     <!-- Custom Actions component (holds embedded scripts) -->
-    <Component Id="CustomActionsComponent" Directory="INSTALLFOLDER" Guid="*">
+    <Component Id="CustomActionsComponent" Directory="INSTALLFOLDER" Guid="*" Bitness="always64">
       <RegistryKey Root="HKLM" Key="SOFTWARE\ServicioRESTEjecucionComandos">
         <RegistryValue Name="InstallFolder" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
       </RegistryKey>
@@ -304,25 +327,26 @@
 
     <!-- Install execute sequence -->
     <InstallExecuteSequence>
-      <!-- Remove previous version first -->
       <RemoveExistingProducts Before="InstallInitialize" />
+      
+      <InstallFiles /> 
+      
+      <Custom Action="SetConfigureAppSettingsData" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="ConfigureAppSettingsDeferred" After="SetConfigureAppSettingsData" Condition="NOT Installed" />
 
-      <!-- Configure appsettings after files are installed -->
-      <Custom Action="SetWixAppInstallFolder" After="InstallFiles" />
-      <Custom Action="ConfigureAppSettings" After="SetWixAppInstallFolder" />
+      <!-- <CustomAction Id="ConfigureAppSettingsDeferred" 
+              BinaryRef="Wix4UtilCA_X64" Directory="INSTALLFOLDER" 
+              ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[ScriptsDir]Configure-AppSettings.ps1&quot; &quot;[WixBundleExecutePackageCacheFolder]&quot;" 
+              Execute="deferred" 
+              Impersonate="no" /> -->
 
-      <!-- Install service -->
-      <Custom Action="InstallWindowsService" After="ConfigureAppSettings" />
+      <Custom Action="InstallWindowsService" After="ConfigureAppSettingsDeferred" Condition="NOT Installed" />
+      
+      <Custom Action="StartWindowsService" After="InstallWindowsService" Condition="StartServiceAfterInstall = 1 OR StartServiceAfterInstall = &quot;yes&quot;" />
+      <Custom Action="InstallScheduledTaskCA" After="StartWindowsService" Condition="InstallScheduledTask = 1 OR InstallScheduledTask = &quot;yes&quot;" />
 
-      <!-- Start service if requested -->
-      <Custom Action="StartWindowsService" After="InstallWindowsService" Condition="StartServiceAfterInstall = yes" />
-
-      <!-- Install scheduled task if requested -->
-      <Custom Action="InstallScheduledTaskCA" After="StartWindowsService" Condition="InstallScheduledTask = yes" />
-
-      <!-- Uninstall actions -->
-      <Custom Action="UninstallScheduledTaskCA" Before="RemoveFiles" Condition="REMOVE = ALL" />
-      <Custom Action="UninstallWindowsService" Before="RemoveFiles" Condition="REMOVE = ALL" />
+      <Custom Action="UninstallScheduledTaskCA" Before="UninstallWindowsService" Condition="REMOVE = &quot;ALL&quot;" />
+      <Custom Action="UninstallWindowsService" Before="RemoveFiles" Condition="REMOVE = &quot;ALL&quot;" />
     </InstallExecuteSequence>
   </Package>
 </Wix>

@@ -10,6 +10,8 @@
           DisableModify="yes"
           Compressed="yes">
 
+    <WixVariable Id="WixStdbaLicenseUrl" Value="" />
+
     <BootstrapperApplication Id="WixStandardBootstrapperApplication">
       <bal:WixStandardBootstrapperApplication LicenseFile="license.rtf" Theme="hyperlinkLicense" />
     </BootstrapperApplication>
@@ -26,7 +28,7 @@
     <Variable Name="JwtSecretKey" Value="" />
     <Variable Name="JwtAccessTokenMinutes" Value="5" />
     <Variable Name="JwtRefreshTokenDays" Value="30" />
-    <Variable Name="LogsPath" Value="[InstallFolder]\Logs" />
+    <Variable Name="LogsPath" Value="" />
     <Variable Name="StartServiceAfterInstall" Value="1" />
     <Variable Name="InstallScheduledTask" Value="0" />
     <Variable Name="SmtpServer" Value="" />
@@ -53,7 +55,7 @@
         <MsiProperty Name="JwtSecretKey" Value="[JwtSecretKey]" />
         <MsiProperty Name="JwtAccessTokenMinutes" Value="[JwtAccessTokenMinutes]" />
         <MsiProperty Name="JwtRefreshTokenDays" Value="[JwtRefreshTokenDays]" />
-        <MsiProperty Name="LogsPath" Value="[LogsPath]" />
+        <MsiProperty Name="LogsPath" Value="[LogsPath]" /> 
         <MsiProperty Name="StartServiceAfterInstall" Value="[StartServiceAfterInstall]" />
         <MsiProperty Name="InstallScheduledTask" Value="[InstallScheduledTask]" />
         <MsiProperty Name="SmtpServer" Value="[SmtpServer]" />

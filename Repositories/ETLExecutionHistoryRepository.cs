@@ -54,7 +54,7 @@ public class ETLExecutionHistoryRepository
     /// <summary>
     /// Gets an ETLExecutionHistory record by its Id.
     /// </summary>
-    public async Task<ETLExecutionHistory?> GetByIdAsync(Guid id)
+    public virtual async Task<ETLExecutionHistory?> GetByIdAsync(Guid id)
     {
         _logger.LogDebug("Querying ETLExecutionHistory from database by Id {HistoryId}.", id);
         var result = await _context.ETLExecutionHistories.FindAsync(id);
@@ -76,7 +76,7 @@ public class ETLExecutionHistoryRepository
     /// <summary>
     /// Updates the status and related fields of an ETLExecutionHistory record atomically.
     /// </summary>
-    public async Task UpdateStatusAsync(Guid id, string status, int? exitCode = null, string? output = null, string? error = null, DateTime? executedAt = null, DateTime? completedAt = null)
+    public virtual async Task UpdateStatusAsync(Guid id, string status, int? exitCode = null, string? output = null, string? error = null, DateTime? executedAt = null, DateTime? completedAt = null)
     {
         _logger.LogInformation("Updating status to {Status} for ETLExecutionHistory in database with Id {HistoryId}.", status, id);
         var item = await _context.ETLExecutionHistories.FindAsync(id);
@@ -137,7 +137,7 @@ public class ETLExecutionHistoryRepository
     /// Queries dtx_seguimiento to verify that a record exists for the given CodEnvio and Codigo combination.
     /// Returns the latest FechaDatos found, or null if no matching record exists.
     /// </summary>
-    public async Task<DtxSeguimientoVerificationResult?> VerifyDtxSeguimientoAsync(string codEnvio, string codigo)
+    public virtual async Task<DtxSeguimientoVerificationResult?> VerifyDtxSeguimientoAsync(string codEnvio, string codigo)
     {
         _logger.LogInformation("[DB] Querying dtx_seguimiento for CodEnvio={CodEnvio}, Codigo={Codigo}.", codEnvio, codigo);
         var results = await _context.Database
@@ -161,7 +161,7 @@ public class ETLExecutionHistoryRepository
     /// <summary>
     /// Updates the status, FechaDatos, and related fields of an ETLExecutionHistory record atomically.
     /// </summary>
-    public async Task UpdateStatusWithFechaDatosAsync(
+    public virtual async Task UpdateStatusWithFechaDatosAsync(
         Guid id,
         string status,
         DateOnly? fechaDatos = null,

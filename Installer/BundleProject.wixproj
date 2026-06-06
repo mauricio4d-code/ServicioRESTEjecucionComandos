@@ -2,11 +2,18 @@
 
   <PropertyGroup>
     <OutputType>Bundle</OutputType>
+    <Platforms>x64</Platforms>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <InstallerArchitecture>x64</InstallerArchitecture>
     <AppVersion>1.0.0</AppVersion>
     <PublishOutputPath>publish</PublishOutputPath>
     <MsiOutputPath>$(OutDir)MsiProject.msi</MsiOutputPath>
     <DefineConstants>PublishOutputPath=$(PublishOutputPath);MsiOutputPath=$(MsiOutputPath)</DefineConstants>
     <DefaultItemExcludes>$(DefaultItemExcludes);Product.wxs;CustomActions.wxs;ServiceConfig.wxs;ScheduledTaskConfig.wxs;UI.wxs</DefaultItemExcludes>
+    
+    <WixBindVariables>WixStdbaLicenseUrl=</WixBindVariables>
+    
+    <WixExtensions>WixToolset.Bal.wixext</WixExtensions>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,5 +23,11 @@
   <ItemGroup>
     <ProjectReference Include="MsiProject.wixproj" />
   </ItemGroup>
+
+  <Target Name="ForceRegisterBalExtension" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <WixExtension Include="WixToolset.Bal.wixext" />
+    </ItemGroup>
+  </Target>
 
 </Project>

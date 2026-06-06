@@ -1,70 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Fragment>
-    <!-- ===================== Custom Actions ===================== -->
-
-    <!-- Property to hold INSTALLFOLDER for deferred custom actions (must be ALL CAPS for Secure) -->
-    <Property Id="WIXAPPINSTALLFOLDER" Secure="yes" />
-
-    <!-- Set WIXAPPINSTALLFOLDER from INSTALLFOLDER (immediate) -->
     <CustomAction
-        Id="SetWixAppInstallFolder"
-        Property="WIXAPPINSTALLFOLDER"
-        Value="[INSTALLFOLDER]"
+        Id="SetConfigureAppSettingsData"
+        Property="ConfigureAppSettingsDeferred"
+        Value="INSTALLFOLDER=[INSTALLFOLDER];ServicePort=[ServicePort];AuthDbProvider=[AuthDbProvider];AuthDbConnectionString=[AuthDbConnectionString];ServiceDbProvider=[ServiceDbProvider];ServiceDbConnectionString=[ServiceDbConnectionString];DataxExePath=[DataxExePath];DailyCodes=[DailyCodes];ExcludedCodes=[ExcludedCodes];JwtSecretKey=[JwtSecretKey];JwtAccessTokenMinutes=[JwtAccessTokenMinutes];JwtRefreshTokenDays=[JwtRefreshTokenDays];LogsPath=[LogsPath];SmtpServer=[SmtpServer];SmtpPort=[SmtpPort];EmailFrom=[EmailFrom];EmailUsername=[EmailUsername];EmailPassword=[EmailPassword];EmailRecipients=[EmailRecipients]"
         Execute="immediate" />
 
-    <!-- Configure appsettings.json from template -->
     <CustomAction
-        Id="ConfigureAppSettings"
+        Id="ConfigureAppSettingsDeferred"
         Directory="INSTALLFOLDER"
         Execute="deferred"
         Impersonate="no"
         Return="check"
-        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File [WIXAPPINSTALLFOLDER]Scripts\Configure-AppSettings.ps1 [WIXAPPINSTALLFOLDER] [ServicePort] [AuthDbProvider] [AuthDbConnectionString] [ServiceDbProvider] [ServiceDbConnectionString] [DataxExePath] [DailyCodes] [ExcludedCodes] [JwtSecretKey] [JwtAccessTokenMinutes] [JwtRefreshTokenDays] [LogsPath] [SmtpServer] [SmtpPort] [EmailFrom] [EmailUsername] [EmailPassword] [EmailRecipients]" />
+        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Configure-AppSettings.ps1&quot;" />
 
-    <!-- Install Windows Service -->
+
     <CustomAction
         Id="InstallWindowsService"
         Directory="INSTALLFOLDER"
         Execute="deferred"
         Impersonate="no"
         Return="check"
-        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File [WIXAPPINSTALLFOLDER]Scripts\Install-Service.ps1 [WIXAPPINSTALLFOLDER]" />
+        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Install-Service.ps1&quot; &quot;[INSTALLFOLDER]&quot;" />
 
-    <!-- Start Windows Service -->
     <CustomAction
         Id="StartWindowsService"
         Directory="INSTALLFOLDER"
         Execute="deferred"
         Impersonate="no"
         Return="check"
-        ExeCommand="powershell.exe -ExecutionPolicy Bypass -Command Start-Service -Name ServicioRESTEjecucionComandos -ErrorAction SilentlyContinue" />
+        ExeCommand="powershell.exe -ExecutionPolicy Bypass -Command &quot;Start-Service -Name ServicioRESTEjecucionComandos -ErrorAction SilentlyContinue&quot;" />
 
-    <!-- Uninstall Windows Service -->
     <CustomAction
         Id="UninstallWindowsService"
         Directory="INSTALLFOLDER"
         Execute="deferred"
         Impersonate="no"
         Return="check"
-        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File [WIXAPPINSTALLFOLDER]Scripts\Uninstall-Service.ps1" />
+        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Uninstall-Service.ps1&quot;" />
 
-    <!-- Install Scheduled Task -->
     <CustomAction
         Id="InstallScheduledTaskCA"
         Directory="INSTALLFOLDER"
         Execute="deferred"
         Impersonate="no"
         Return="check"
-        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File [WIXAPPINSTALLFOLDER]Scripts\Install-ScheduledTask.ps1 [WIXAPPINSTALLFOLDER]" />
+        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Install-ScheduledTask.ps1&quot; &quot;[INSTALLFOLDER]&quot;" />
 
-    <!-- Uninstall Scheduled Task -->
     <CustomAction
         Id="UninstallScheduledTaskCA"
         Directory="INSTALLFOLDER"
         Execute="deferred"
         Impersonate="no"
         Return="check"
-        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File [WIXAPPINSTALLFOLDER]Scripts\Uninstall-ScheduledTask.ps1" />
+        ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Uninstall-ScheduledTask.ps1&quot;" />
   </Fragment>
 </Wix>

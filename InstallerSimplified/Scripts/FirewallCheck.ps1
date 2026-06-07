@@ -1,0 +1,2 @@
+Get-NetFirewallRule -DisplayName "ServicioRESTEjecucionComandos" |
+Get-NetFirewallApplicationFilter

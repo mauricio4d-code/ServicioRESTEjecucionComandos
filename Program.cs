@@ -22,14 +22,32 @@ if (!string.IsNullOrEmpty(baseDir))
 } */
 
 // -----------------------------------------------------------------------
-// Ensure Logs directory exists before starting
+// Ensure ProgramData directory exists for SQLite DB and Logs
 // -----------------------------------------------------------------------
-if (!Directory.Exists("Logs"))
+var serviceDataDir = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+    "ServicioRESTEjecucionComandos");
+var serviceLogsDir = Path.Combine(serviceDataDir, "Logs");
+
+if (!Directory.Exists(serviceDataDir))
 {
-    Directory.CreateDirectory("Logs");
+    Directory.CreateDirectory(serviceDataDir);
+}
+if (!Directory.Exists(serviceLogsDir))
+{
+    Directory.CreateDirectory(serviceLogsDir);
 }
 
+var sqliteDbPath = Path.Combine(serviceDataDir, "ServicioRESTEjecucionComandos.db");
+var sqliteConnectionString = $"Data Source={sqliteDbPath}";
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Override RefreshTokenDatabase connection string to use absolute ProgramData path
+builder.Configuration.GetSection("ConnectionStrings")["RefreshTokenDatabase"] = sqliteConnectionString;
+
+// Override Serilog log file path to use ProgramData directory
+builder.Configuration["Serilog:WriteTo:1:Args:path"] = Path.Combine(serviceLogsDir, "log-.txt");
 
 // -----------------------------------------------------------------------
 // Windows Service support (dual-mode: works as console and Windows Service)

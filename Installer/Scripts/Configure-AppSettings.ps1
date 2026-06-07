@@ -101,6 +101,21 @@ try {
     }
 
     # -----------------------------------------------------------------------
+    # Ensure ProgramData directory exists for SQLite DB and Logs
+    # -----------------------------------------------------------------------
+    $programDataDir = Join-Path $env:ProgramData "ServicioRESTEjecucionComandos"
+    $programDataLogsDir = Join-Path $programDataDir "Logs"
+
+    if (-not (Test-Path $programDataDir)) {
+        New-Item -ItemType Directory -Path $programDataDir -Force | Out-Null
+        Write-Log "Created ProgramData directory: $programDataDir"
+    }
+    if (-not (Test-Path $programDataLogsDir)) {
+        New-Item -ItemType Directory -Path $programDataLogsDir -Force | Out-Null
+        Write-Log "Created Logs directory: $programDataLogsDir"
+    }
+
+    # -----------------------------------------------------------------------
     # Handle upgrade: if appsettings.json exists, preserve it and merge new keys
     # -----------------------------------------------------------------------
     if (Test-Path $configPath) {

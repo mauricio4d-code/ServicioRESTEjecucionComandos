@@ -14,13 +14,6 @@ using ServicioRESTEjecucionComandos.Hubs;
 using ServicioRESTEjecucionComandos.Services;
 using ServicioRESTEjecucionComandos.HealthChecks;
 
-/* var currentServiceExePath = Assembly.GetExecutingAssembly().Location;
-var baseDir = Path.GetDirectoryName(currentServiceExePath);
-if (!string.IsNullOrEmpty(baseDir))
-{
-    Directory.SetCurrentDirectory(baseDir);
-} */
-
 var builder = WebApplication.CreateBuilder(args);
 
 // -----------------------------------------------------------------------

@@ -40,13 +40,14 @@ public class EtlJobService
 
     /// <summary>
     /// Enqueues a manual ETL execution via Hangfire, creating the history record first.
+    /// Uses an atomic upsert-or-get pattern to eliminate the N+1 check-then-insert query.
     /// </summary>
     /// <param name="tipoEntidad">Entity type for this execution.</param>
     /// <param name="codEnvio">Sending code identifier.</param>
     /// <param name="fechaDatos">Data date for this execution.</param>
     /// <param name="codigo">Database code to execute.</param>
     /// <param name="triggerType">Trigger type: MANUAL or REPROCESO.</param>
-    /// <returns>The HistoryId of the created execution record.</returns>
+    /// <returns>The HistoryId of the created or existing execution record.</returns>
     public async Task<Guid> EnqueueManualAsync(
         string tipoEntidad,
         string codEnvio,
@@ -59,37 +60,13 @@ public class EtlJobService
         {
             var historyRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
 
-            // Prevent duplicate active executions for the same CodEnvio + Codigo combination.
-            // If there's already a PENDIENTE or EN PROCESO record, return its ID instead of creating a new one.
-            _logger.LogInformation("[DB] Checking for active execution in hist_etl_execution for CodEnvio={CodEnvio}, Codigo={Codigo}.", codEnvio, codigo);
-            var existing = await historyRepo.GetActiveExecutionAsync(codEnvio, codigo);
-            _logger.LogInformation("[DB] Active execution check completed. Existing record found: {ExistingFound}.", existing != null);
-            if (existing != null)
-            {
-                _logger.LogWarning(
-                    "Duplicate enqueue prevented for CodEnvio={CodEnvio}, Codigo={Codigo}. " +
-                    "Returning existing HistoryId={HistoryId} with status {Status}.",
-                    codEnvio, codigo, existing.Id, existing.Status);
-                return existing.Id;
-            }
-
-            // Create ETLExecutionHistory record with PENDIENTE status
-            var history = new ETLExecutionHistory
-            {
-                CodEnvio = codEnvio,
-                TipoEntidad = tipoEntidad,
-                FechaDatos = fechaDatos,
-                Codigo = codigo,
-                Status = "PENDIENTE",
-                TriggerType = triggerType
-            };
-
-            _logger.LogInformation("[DB] Inserting new ETLExecutionHistory record with status PENDIENTE for CodEnvio={CodEnvio}, Codigo={Codigo}.", codEnvio, codigo);
-            await historyRepo.CreateAsync(history);
+            // Atomic check-and-insert: returns existing active record or creates a new one in a single scope.
+            _logger.LogInformation("[DB] Atomic upsert-or-get for active execution in hist_etl_execution for CodEnvio={CodEnvio}, Codigo={Codigo}.", codEnvio, codigo);
+            var history = await historyRepo.UpsertOrGetActiveAsync(codEnvio, codigo, tipoEntidad, fechaDatos, triggerType);
             historyId = history.Id;
         }
 
-        _logger.LogInformation("Created ETLExecutionHistory {HistoryId} with trigger type {TriggerType}.", historyId, triggerType);
+        _logger.LogInformation("Using ETLExecutionHistory {HistoryId} with trigger type {TriggerType}.", historyId, triggerType);
 
         // Enqueue in Hangfire - only pass serializable parameters (Guid + string)
         BackgroundJob.Enqueue(
@@ -171,6 +148,7 @@ public class EtlJobService
     /// <summary>
     /// Executes a scheduled ETL job by loading the scheduled history record,
     /// building the command from Params, running CommandExecutor, and updating the history status.
+    /// All database operations are consolidated into a single scope to eliminate N+1 queries.
     /// Called by Hangfire background jobs for scheduled executions.
     /// </summary>
     [AutomaticRetry(Attempts = 3)]
@@ -187,16 +165,13 @@ public class EtlJobService
             slotAcquired = true;
             _logger.LogInformation("Acquired execution slot for ScheduledHistoryId {HistoryId}.", historyId);
 
-            ETLExecutionHistoryScheduled? history = null;
+            // Single consolidated scope for all database operations in this job lifecycle.
+            using var scope = _scopeFactory.CreateScope();
+            var scheduledRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryScheduledRepository>();
 
-            // Load scheduled history record in a scope
-            using (var scope = _scopeFactory.CreateScope())
-            {
-                var scheduledRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryScheduledRepository>();
-                _logger.LogInformation("[DB] Loading ETLExecutionHistoryScheduled by Id {HistoryId}.", historyId);
-                history = await scheduledRepo.GetByIdAsync(historyId);
-                _logger.LogInformation("[DB] Scheduled history load completed. Record found: {HistoryFound}.", history != null);
-            }
+            _logger.LogInformation("[DB] Loading ETLExecutionHistoryScheduled by Id {HistoryId}.", historyId);
+            var history = await scheduledRepo.GetByIdAsync(historyId);
+            _logger.LogInformation("[DB] Scheduled history load completed. Record found: {HistoryFound}.", history != null);
 
             if (history == null)
             {
@@ -206,7 +181,7 @@ public class EtlJobService
 
             // Update status to EN PROCESO only after acquiring a slot
             _logger.LogInformation("[DB] Updating ETLExecutionHistoryScheduled {HistoryId} status to EN PROCESO.", historyId);
-            await UpdateScheduledStatusInScopeAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
+            await scheduledRepo.UpdateStatusAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
 
             // Notify connected clients that the scheduled task has started
             await _notifier.BroadcastTaskStartedAsync(history.Params);
@@ -229,7 +204,7 @@ public class EtlJobService
             var completedAt = DateTime.UtcNow;
 
             _logger.LogInformation("[DB] Updating final status to {Status} for ScheduledHistoryId {HistoryId}.", status, historyId);
-            await UpdateScheduledStatusInScopeAsync(
+            await scheduledRepo.UpdateStatusAsync(
                 historyId,
                 status,
                 exitCode: result.ExitCode,
@@ -278,6 +253,7 @@ public class EtlJobService
     /// <summary>
     /// Executes a single ETL job by loading the history record, building the command,
     /// running CommandExecutor, and updating the history status.
+    /// All database operations are consolidated into a single scope to eliminate N+1 queries.
     /// Called by Hangfire background jobs.
     /// </summary>
     [AutomaticRetry(Attempts = 3)]
@@ -294,16 +270,13 @@ public class EtlJobService
             slotAcquired = true;
             _logger.LogInformation("Acquired execution slot for HistoryId {HistoryId}.", historyId);
 
-            ETLExecutionHistory? history = null;
+            // Single consolidated scope for all database operations in this job lifecycle.
+            using var scope = _scopeFactory.CreateScope();
+            var historyRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
 
-            // Load history record in a scope
-            using (var scope = _scopeFactory.CreateScope())
-            {
-                var historyRepo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
-                _logger.LogInformation("[DB] Loading ETLExecutionHistory by Id {HistoryId} from hist_etl_execution table.", historyId);
-                history = await historyRepo.GetByIdAsync(historyId);
-                _logger.LogInformation("[DB] History load completed. Record found: {HistoryFound}.", history != null);
-            }
+            _logger.LogInformation("[DB] Loading ETLExecutionHistory by Id {HistoryId} from hist_etl_execution table.", historyId);
+            var history = await historyRepo.GetByIdAsync(historyId);
+            _logger.LogInformation("[DB] History load completed. Record found: {HistoryFound}.", history != null);
 
             if (history == null)
             {
@@ -313,7 +286,7 @@ public class EtlJobService
 
             // Update status to EN PROCESO only after acquiring a slot
             _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} status to EN PROCESO.", historyId);
-            await UpdateStatusInScopeAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
+            await historyRepo.UpdateStatusAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
 
             // Determine Start/End dates based on TriggerType.
             // For MANUAL (Actualizar): FechaDatos already holds the target period.
@@ -355,7 +328,7 @@ public class EtlJobService
             {
                 // Only verify dtx_seguimiento when the ETL execution succeeded.
                 // If the ETL failed, report the failure immediately without hiding it behind verification.
-                var verificationResult = await VerifyDtxSeguimientoInScopeAsync(history.CodEnvio, history.Codigo);
+                var verificationResult = await historyRepo.VerifyDtxSeguimientoAsync(history.CodEnvio, history.Codigo);
                 var verificationFechaDatos = verificationResult?.FechaDatos;
 
                 bool targetPeriodMatched = false;
@@ -374,7 +347,7 @@ public class EtlJobService
                     // dtx_seguimiento record found for the target period - update normally
                     _logger.LogInformation("[DB] dtx_seguimiento verification passed for HistoryId {HistoryId}. Updating final status to EXITOSO with FechaDatos={FechaDatos}.",
                         historyId, verificationFechaDatos);
-                    await UpdateStatusWithFechaDatosInScopeAsync(
+                    await historyRepo.UpdateStatusWithFechaDatosAsync(
                         historyId,
                         "EXITOSO",
                         fechaDatos: verificationFechaDatos,
@@ -400,7 +373,7 @@ public class EtlJobService
 
                     _logger.LogWarning("[DB] dtx_seguimiento verification FAILED for HistoryId {HistoryId}. No matching record for target period [{Start}, {End}]. Marking as FALLIDO.",
                         historyId, startDate, endDate);
-                    await UpdateStatusWithFechaDatosInScopeAsync(
+                    await historyRepo.UpdateStatusWithFechaDatosAsync(
                         historyId,
                         "FALLIDO",
                         fechaDatos: verificationFechaDatos,
@@ -414,7 +387,7 @@ public class EtlJobService
             {
                 // ETL execution failed - report the failure immediately without checking dtx_seguimiento
                 _logger.LogWarning("ETL job {HistoryId} failed with exit code {ExitCode}. Skipping dtx_seguimiento verification.", historyId, result.ExitCode);
-                await UpdateStatusInScopeAsync(
+                await historyRepo.UpdateStatusAsync(
                     historyId,
                     "FALLIDO",
                     exitCode: result.ExitCode,
@@ -449,6 +422,7 @@ public class EtlJobService
     /// <summary>
     /// Creates a scoped service provider and calls UpdateStatusAsync on ETLExecutionHistoryRepository,
     /// ensuring the scoped DbContext is properly disposed after each call.
+    /// Used only as a fallback in exception handlers when the main scope may already be disposed.
     /// </summary>
     private async Task UpdateStatusInScopeAsync(
         Guid historyId,
@@ -474,6 +448,7 @@ public class EtlJobService
     /// <summary>
     /// Creates a scoped service provider and calls UpdateStatusAsync on ETLExecutionHistoryScheduledRepository,
     /// ensuring the scoped DbContext is properly disposed after each call.
+    /// Used only as a fallback in exception handlers when the main scope may already be disposed.
     /// </summary>
     private async Task UpdateScheduledStatusInScopeAsync(
         Guid historyId,
@@ -489,44 +464,6 @@ public class EtlJobService
         await repo.UpdateStatusAsync(
             historyId,
             status,
-            exitCode: exitCode,
-            output: output,
-            error: error,
-            executedAt: executedAt,
-            completedAt: completedAt);
-    }
-
-    /// <summary>
-    /// Creates a scoped service provider and calls VerifyDtxSeguimientoAsync on ETLExecutionHistoryRepository,
-    /// ensuring the scoped DbContext is properly disposed after each call.
-    /// </summary>
-    private async Task<DtxSeguimientoVerificationResult?> VerifyDtxSeguimientoInScopeAsync(string codEnvio, string codigo)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var repo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
-        return await repo.VerifyDtxSeguimientoAsync(codEnvio, codigo);
-    }
-
-    /// <summary>
-    /// Creates a scoped service provider and calls UpdateStatusWithFechaDatosAsync on ETLExecutionHistoryRepository,
-    /// ensuring the scoped DbContext is properly disposed after each call.
-    /// </summary>
-    private async Task UpdateStatusWithFechaDatosInScopeAsync(
-        Guid historyId,
-        string status,
-        DateOnly? fechaDatos = null,
-        int? exitCode = null,
-        string? output = null,
-        string? error = null,
-        DateTime? executedAt = null,
-        DateTime? completedAt = null)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var repo = scope.ServiceProvider.GetRequiredService<ETLExecutionHistoryRepository>();
-        await repo.UpdateStatusWithFechaDatosAsync(
-            historyId,
-            status,
-            fechaDatos: fechaDatos,
             exitCode: exitCode,
             output: output,
             error: error,

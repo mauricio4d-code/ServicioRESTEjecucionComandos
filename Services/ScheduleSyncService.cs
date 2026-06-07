@@ -65,6 +65,8 @@ public class ScheduleSyncService : BackgroundService
 
     /// <summary>
     /// Synchronizes the database schedules with Hangfire recurring jobs.
+    /// Fetches all schedules once and shares the result between registration and cleanup,
+    /// eliminating the redundant second query to the schedules table.
     /// </summary>
     private async Task SyncSchedulesAsync(CancellationToken stoppingToken)
     {
@@ -72,13 +74,17 @@ public class ScheduleSyncService : BackgroundService
         {
             using var scope = _serviceProvider.CreateScope();
             var scheduleRepo = scope.ServiceProvider.GetRequiredService<EtlScheduleRepository>();
-            _logger.LogInformation("[DB] Querying active schedules from schedules table.");
-            var activeSchedules = await scheduleRepo.GetActiveAsync();
-            _logger.LogInformation("[DB] Active schedules query completed. Count: {Count}.", activeSchedules.Count);
+            _logger.LogInformation("[DB] Querying all schedules from schedules table (shared for sync and cleanup).");
+            var allSchedules = await scheduleRepo.GetAllAsync();
+            _logger.LogInformation("[DB] All schedules query completed. Count: {Count}.", allSchedules.Count);
 
             if (stoppingToken.IsCancellationRequested) return;
 
             var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+
+            // Filter active schedules from the single query result
+            var activeSchedules = allSchedules.Where(s => s.IsActive).ToList();
+            _logger.LogInformation("[DB] Active schedules filtered in-memory. Count: {Count}.", activeSchedules.Count);
 
             // Build a set of job IDs that should exist
             var expectedJobIds = new HashSet<string>();
@@ -119,8 +125,8 @@ public class ScheduleSyncService : BackgroundService
                 }
             }
 
-            // Remove jobs for schedules that are no longer active
-            await CleanupInactiveJobsAsync(scheduleRepo, recurringJobManager);
+            // Remove jobs for schedules that are no longer active - pass the already-fetched list
+            await CleanupInactiveJobsAsync(allSchedules, recurringJobManager);
 
             _logger.LogInformation(
                 "Schedule sync completed. {ActiveCount} active schedules synced.",
@@ -134,14 +140,12 @@ public class ScheduleSyncService : BackgroundService
 
     /// <summary>
     /// Attempts to remove recurring jobs for schedules that are no longer active.
+    /// Receives the pre-fetched schedules list to avoid a redundant database query.
     /// </summary>
     private async Task CleanupInactiveJobsAsync(
-        EtlScheduleRepository scheduleRepo,
+        List<EtlSchedule> allSchedules,
         IRecurringJobManager recurringJobManager)
     {
-        _logger.LogInformation("[DB] Querying all schedules from schedules table for cleanup check.");
-        var allSchedules = await scheduleRepo.GetAllAsync();
-        _logger.LogInformation("[DB] All schedules query completed. Count: {Count}.", allSchedules.Count);
         var activeIds = new HashSet<Guid>(allSchedules.Where(s => s.IsActive).Select(s => s.Id));
 
         foreach (var schedule in allSchedules)

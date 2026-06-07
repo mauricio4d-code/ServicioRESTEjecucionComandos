@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
@@ -12,6 +13,13 @@ using ServicioRESTEjecucionComandos.Repositories;
 using ServicioRESTEjecucionComandos.Hubs;
 using ServicioRESTEjecucionComandos.Services;
 using ServicioRESTEjecucionComandos.HealthChecks;
+
+/* var currentServiceExePath = Assembly.GetExecutingAssembly().Location;
+var baseDir = Path.GetDirectoryName(currentServiceExePath);
+if (!string.IsNullOrEmpty(baseDir))
+{
+    Directory.SetCurrentDirectory(baseDir);
+} */
 
 // -----------------------------------------------------------------------
 // Ensure Logs directory exists before starting

@@ -39,9 +39,8 @@
     <Variable Name="EmailRecipients" Value="" />
 
     <Chain>
-      <MsiPackage Id="MainMsi"
-                  SourceFile="$(var.MsiOutputPath)"
-                  InstallCondition="1"
+      <MsiPackage SourceFile="$(var.MsiOutputPath)" 
+                  Visible="yes" 
                   Vital="yes">
         <MsiProperty Name="INSTALLFOLDER" Value="[InstallFolder]" />
         <MsiProperty Name="ServicePort" Value="[ServicePort]" />

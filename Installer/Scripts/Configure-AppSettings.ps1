@@ -56,32 +56,32 @@ try {
 
     # Safe mapping: If the parameter does not exist or is null, it is assigned an empty string or a default string.
     $InstallFolder             = $params["INSTALLFOLDER"]
-    $ServicePort               = if ($params["ServicePort"]) { $params["ServicePort"] } else { "5000" }
-    $AuthDbProvider            = if ($params["AuthDbProvider"]) { $params["AuthDbProvider"] } else { "sqlite" }
-    $AuthDbConnectionString    = if ($params["AuthDbConnectionString"]) { $params["AuthDbConnectionString"] } else { "" }
-    $ServiceDbProvider         = if ($params["ServiceDbProvider"]) { $params["ServiceDbProvider"] } else { "postgres" }
-    $ServiceDbConnectionString = if ($params["ServiceDbConnectionString"]) { $params["ServiceDbConnectionString"] } else { "" }
-    $DataxExePath              = if ($params["DataxExePath"]) { $params["DataxExePath"] } else { "" }
-    $DailyCodes                = if ($params["DailyCodes"]) { $params["DailyCodes"] } else { "" }
-    $ExcludedCodes             = if ($params["ExcludedCodes"]) { $params["ExcludedCodes"] } else { "" }
-    $JwtSecretKey              = if ($params["JwtSecretKey"]) { $params["JwtSecretKey"] } else { "" }
-    $JwtAccessTokenMinutes     = if ($params["JwtAccessTokenMinutes"]) { $params["JwtAccessTokenMinutes"] } else { "5" }
-    $JwtRefreshTokenDays       = if ($params["JwtRefreshTokenDays"]) { $params["JwtRefreshTokenDays"] } else { "30" }
-    $LogsPath                  = if ($params["LogsPath"]) { $params["LogsPath"] } else { "" }
+    $ServicePort               = if ($params["Port"]) { $params["Port"] } else { "5000" }
+    $AuthDbProvider            = if ($params["Auth"]) { $params["Auth"] } else { "sqlite" }
+    $AuthDbConnectionString    = if ($params["Conn"]) { $params["Conn"] } else { "" }
+    $ServiceDbProvider         = if ($params["Srv"]) { $params["Srv"] } else { "postgres" }
+    $ServiceDbConnectionString = if ($params["SrvConn"]) { $params["SrvConn"] } else { "" }
+    $DataxExePath              = if ($params["Datax"]) { $params["Datax"] } else { "" }
+    $DailyCodes                = if ($params["Daily"]) { $params["Daily"] } else { "" }
+    $ExcludedCodes             = if ($params["Excl"]) { $params["Excl"] } else { "" }
+    $JwtSecretKey              = if ($params["Key"]) { $params["Key"] } else { "" }
+    $JwtAccessTokenMinutes     = if ($params["Min"]) { $params["Min"] } else { "5" }
+    $JwtRefreshTokenDays       = if ($params["Days"]) { $params["Days"] } else { "30" }
+    $LogsPath                  = if ($params["Logs"]) { $params["Logs"] } else { "" }
 
-    Out-File -FilePath $LogPrueba -InputObject "InstallFolder: $InstallFolder" -Append
-    Out-File -FilePath $LogPrueba -InputObject "ServicePort: $ServicePort" -Append
-    Out-File -FilePath $LogPrueba -InputObject "AuthDbProvider: $AuthDbProvider" -Append
-    Out-File -FilePath $LogPrueba -InputObject "AuthDbConnectionString: $AuthDbConnectionString" -Append
-    Out-File -FilePath $LogPrueba -InputObject "ServiceDbProvider: $ServiceDbProvider" -Append
-    Out-File -FilePath $LogPrueba -InputObject "ServiceDbConnectionString: $ServiceDbConnectionString" -Append
-    Out-File -FilePath $LogPrueba -InputObject "DataxExePath: $DataxExePath" -Append
-    Out-File -FilePath $LogPrueba -InputObject "DailyCodes: $DailyCodes" -Append
-    Out-File -FilePath $LogPrueba -InputObject "ExcludedCodes: $ExcludedCodes" -Append
-    Out-File -FilePath $LogPrueba -InputObject "JwtSecretKey: $JwtSecretKey" -Append
-    Out-File -FilePath $LogPrueba -InputObject "JwtAccessTokenMinutes: $JwtAccessTokenMinutes" -Append
-    Out-File -FilePath $LogPrueba -InputObject "JwtRefreshTokenDays: $JwtRefreshTokenDays" -Append
-    Out-File -FilePath $LogPrueba -InputObject "LogsPath: $LogsPath" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "InstallFolder: $InstallFolder" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "ServicePort: $ServicePort" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "AuthDbProvider: $AuthDbProvider" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "AuthDbConnectionString: $AuthDbConnectionString" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "ServiceDbProvider: $ServiceDbProvider" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "ServiceDbConnectionString: $ServiceDbConnectionString" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "DataxExePath: $DataxExePath" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "DailyCodes: $DailyCodes" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "ExcludedCodes: $ExcludedCodes" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "JwtSecretKey: $JwtSecretKey" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "JwtAccessTokenMinutes: $JwtAccessTokenMinutes" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "JwtRefreshTokenDays: $JwtRefreshTokenDays" -Append
+    #Out-File -FilePath $LogPrueba -InputObject "LogsPath: $LogsPath" -Append
 
     if (-not $InstallFolder) {
         throw "Error crítico: El parámetro INSTALLFOLDER no puede estar vacío."
@@ -201,9 +201,6 @@ try {
 } catch {
     # Si el script falla, esto escribirá el error exacto en la carpeta de Logs
     $ErrorActual = $_.Exception.Message
-    Out-File -FilePath $LogPrueba -InputObject "Error en script: $ErrorActual" -Append
+    Out-File -FilePath $LogPrueba -InputObject "Error en Configure-AppSettings: $ErrorActual" -Append
     exit 1 # Le sigue diciendo a WiX que falló
 }
-
-
-

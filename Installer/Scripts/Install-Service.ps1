@@ -3,57 +3,53 @@
     Installs ServicioRESTEjecucionComandos as a Windows Service and configures recovery actions.
 #>
 
-[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$InstallFolder,
-
-    [string]$ServiceName = "ServicioRESTEjecucionComandos",
-
-    [string]$DisplayName = "Servicio REST Ejecución Comandos",
-
-    [string]$Description = "ASP.NET Core Web API service for ETL command execution"
+    [string]$BaseFolder
 )
 
-$ErrorActionPreference = "Stop"
+$LogPrueba = "D:\debug_install_service.txt"
 
-function Write-Log {
-    param([string]$Message)
-    Write-Host "Install-Service: $Message"
+try {
+    # 1. Limpiar la ruta por si llegó con la comilla rota o caracteres extraños de escape
+    # Si la ruta llegó como: C:\Program Files\ServicioRESTEjecucionComandos" debido al escape, esto lo limpia:
+    $BaseFolder = $BaseFolder.Trim('"', ' ')
+    if ($BaseFolder.EndsWith('\')) {
+        $BaseFolder = $BaseFolder.Substring(0, $BaseFolder.Length - 1)
+    }
+
+    $ExePath = Join-Path $BaseFolder "ServicioRESTEjecucionComandos.exe"
+    $ServiceName = "ServicioRESTEjecucionComandos" # Cambia esto si tu servicio se llama distinto
+
+    Out-File -FilePath $LogPrueba -InputObject "Registrando servicio desde: $ExePath" -Append
+
+    # 2. Controlar si el ejecutable realmente existe en el disco antes de registrarlo
+    if (-not (Test-Path $ExePath)) {
+        throw "El archivo ejecutable no se encuentra en la ruta: $ExePath"
+    }
+
+    # 3. Validar si el servicio ya existe para evitar que New-Service rompa el script
+    $ExistingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($ExistingService) {
+        Out-File -FilePath $LogPrueba -InputObject "El servicio ya existía. Deteniendo y eliminando previo..." -Append
+        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+        # Usamos sc.exe para asegurar un borrado limpio e inmediato
+        & sc.exe delete $ServiceName | Out-Null
+        Start-Sleep -Seconds 2 # Pequeña pausa para que Windows libere el handle
+    }
+
+    # 4. Registrar el nuevo servicio de manera nativa
+    # Nota: Para aplicaciones .NET 8 Worker Service, se suele configurar el tipo como OwnProcess
+    New-Service -Name $ServiceName `
+                -BinaryPathName "`"$ExePath`"" `
+                -DisplayName "Servicio REST Ejecución Comandos" `
+                -StartupType Automatic `
+                -Description "Servicio REST para la ejecución remota de ETLs" `
+                -ErrorAction Stop
+
+    Out-File -FilePath $LogPrueba -InputObject "Servicio registrado con éxito total." -Append
+
+} catch {
+    $ErrorActual = $_.Exception.Message
+    Out-File -FilePath $LogPrueba -InputObject "Error en Install-Service: $ErrorActual" -Append
+    exit 1 # Le dice a WiX que la Custom Action falló
 }
-
-Write-Log "Installing Windows Service: $ServiceName"
-
-$exePath = Join-Path $InstallFolder "ServicioRESTEjecucionComandos.exe"
-if (-not (Test-Path $exePath)) {
-    throw "Service executable not found: $exePath"
-}
-
-# Escape quotes for sc.exe
-$escapedExePath = '"' + $exePath + '"'
-
-Write-Log "Binary path: $escapedExePath"
-
-# -----------------------------------------------------------------------
-# Create the Windows Service
-# -----------------------------------------------------------------------
-$scResult = & sc.exe create $ServiceName `
-    binPath= $escapedExePath `
-    start= auto `
-    displayName= $DisplayName `
-    description= $Description 2>&1
-
-Write-Log "sc.exe create output: $($scResult -join ' ')"
-
-# -----------------------------------------------------------------------
-# Configure service recovery actions
-# -----------------------------------------------------------------------
-Write-Log "Configuring service recovery actions"
-
-$recoveryResult = & sc.exe failure $ServiceName `
-    reset= 86400 `
-    actions= restart/5000/restart/10000/restart/30000 2>&1
-
-Write-Log "sc.exe failure output: $($recoveryResult -join ' ')"
-
-Write-Log "Windows Service installation complete"

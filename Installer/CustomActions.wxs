@@ -9,7 +9,7 @@
 
     <CustomAction
         Id="ConfigureAppSettingsDeferred"
-        Directory="INSTALLFOLDER"
+        Directory="System64Folder"
         Execute="deferred"
         Impersonate="no"
         Return="check"
@@ -18,23 +18,22 @@
 
     <CustomAction
         Id="InstallWindowsService"
-        Directory="INSTALLFOLDER"
+        Directory="System64Folder"
         Execute="deferred"
         Impersonate="no"
         Return="check"
         ExeCommand="powershell.exe -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Scripts\Install-Service.ps1&quot; &quot;[INSTALLFOLDER]&quot;" />
 
-    <CustomAction
-        Id="StartWindowsService"
-        Directory="INSTALLFOLDER"
-        Execute="deferred"
-        Impersonate="no"
-        Return="check"
-        ExeCommand="powershell.exe -ExecutionPolicy Bypass -Command &quot;Start-Service -Name ServicioRESTEjecucionComandos -ErrorAction SilentlyContinue&quot;" />
+    <CustomAction Id="StartWindowsService" 
+        Directory="System64Folder" 
+        Execute="deferred" 
+        Impersonate="no" 
+        Return="ignore" 
+        ExeCommand="powershell.exe -ExecutionPolicy Bypass -Command &quot;Start-Service -Name ServicioRESTEjecucionComandos&quot;" />
 
     <CustomAction
         Id="UninstallWindowsService"
-        Directory="INSTALLFOLDER"
+        Directory="System64Folder"
         Execute="deferred"
         Impersonate="no"
         Return="check"
@@ -42,7 +41,7 @@
 
     <CustomAction
         Id="InstallScheduledTaskCA"
-        Directory="INSTALLFOLDER"
+        Directory="System64Folder"
         Execute="deferred"
         Impersonate="no"
         Return="check"
@@ -50,7 +49,7 @@
 
     <CustomAction
         Id="UninstallScheduledTaskCA"
-        Directory="INSTALLFOLDER"
+        Directory="System64Folder"
         Execute="deferred"
         Impersonate="no"
         Return="check"

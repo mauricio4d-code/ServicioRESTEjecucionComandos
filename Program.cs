@@ -21,38 +21,42 @@ if (!string.IsNullOrEmpty(baseDir))
     Directory.SetCurrentDirectory(baseDir);
 } */
 
-// -----------------------------------------------------------------------
-// Ensure ProgramData directory exists for SQLite DB and Logs
-// -----------------------------------------------------------------------
-var serviceDataDir = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-    "ServicioRESTEjecucionComandos");
-var serviceLogsDir = Path.Combine(serviceDataDir, "Logs");
-
-if (!Directory.Exists(serviceDataDir))
-{
-    Directory.CreateDirectory(serviceDataDir);
-}
-if (!Directory.Exists(serviceLogsDir))
-{
-    Directory.CreateDirectory(serviceLogsDir);
-}
-
-var sqliteDbPath = Path.Combine(serviceDataDir, "ServicioRESTEjecucionComandos.db");
-var sqliteConnectionString = $"Data Source={sqliteDbPath}";
-
 var builder = WebApplication.CreateBuilder(args);
 
-// Override RefreshTokenDatabase connection string to use absolute ProgramData path
-// Skip override when running under test (in-memory SQLite databases)
-var existingRefreshTokenConnectionString = builder.Configuration.GetConnectionString("RefreshTokenDatabase");
-if (string.IsNullOrEmpty(existingRefreshTokenConnectionString) || !existingRefreshTokenConnectionString.Contains("mode=memory"))
+// -----------------------------------------------------------------------
+// Production: Ensure ProgramData directory exists for SQLite DB and Logs
+// Only applies when ASPNETCORE_ENVIRONMENT=Production
+// -----------------------------------------------------------------------
+if (builder.Environment.IsProduction())
 {
-    builder.Configuration.GetSection("ConnectionStrings")["RefreshTokenDatabase"] = sqliteConnectionString;
-}
+    var serviceDataDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "ServicioRESTEjecucionComandos");
+    var serviceLogsDir = Path.Combine(serviceDataDir, "Logs");
 
-// Override Serilog log file path to use ProgramData directory
-builder.Configuration["Serilog:WriteTo:1:Args:path"] = Path.Combine(serviceLogsDir, "log-.txt");
+    if (!Directory.Exists(serviceDataDir))
+    {
+        Directory.CreateDirectory(serviceDataDir);
+    }
+    if (!Directory.Exists(serviceLogsDir))
+    {
+        Directory.CreateDirectory(serviceLogsDir);
+    }
+
+    var sqliteDbPath = Path.Combine(serviceDataDir, "ServicioRESTEjecucionComandos.db");
+    var sqliteConnectionString = $"Data Source={sqliteDbPath}";
+
+    // Override RefreshTokenDatabase connection string to use absolute ProgramData path
+    // Skip override when running under test (in-memory SQLite databases)
+    var existingRefreshTokenConnectionString = builder.Configuration.GetConnectionString("RefreshTokenDatabase");
+    if (string.IsNullOrEmpty(existingRefreshTokenConnectionString) || !existingRefreshTokenConnectionString.Contains("mode=memory"))
+    {
+        builder.Configuration.GetSection("ConnectionStrings")["RefreshTokenDatabase"] = sqliteConnectionString;
+    }
+
+    // Override Serilog log file path to use ProgramData directory
+    builder.Configuration["Serilog:WriteTo:1:Args:path"] = Path.Combine(serviceLogsDir, "log-.txt");
+}
 
 // -----------------------------------------------------------------------
 // Windows Service support (dual-mode: works as console and Windows Service)
@@ -581,13 +585,13 @@ else
 startupLogger.LogInformation("============================================");
 startupLogger.LogInformation("Configuration Summary:");
 startupLogger.LogInformation("  QueueConfig.DailyCodes:        [{Codes}]", string.Join(", ", dailyCodes));
-startupLogger.LogInformation("  QueueConfig.ExcludedCodes:       [{Codes}]", string.Join(", ", excludedCodes));
+startupLogger.LogInformation("  QueueConfig.ExcludedCodes:     [{Codes}]", string.Join(", ", excludedCodes));
 startupLogger.LogInformation("  ServiceDb.Provider:            {Provider}", serviceDbProvider);
 startupLogger.LogInformation("  Authentication.Provider:       {Provider}", authenticationProvider);
 startupLogger.LogInformation("  Jwt.AccessTokenMinutes:        {Minutes}", accessTokenMinutes);
 startupLogger.LogInformation("  Jwt.RefreshTokenDays:          {Days}", refreshTokenDays);
-startupLogger.LogInformation("  RefreshTokenCleanup.Interval:    {Minutes} min", cleanupIntervalMinutes);
-startupLogger.LogInformation("  RefreshTokenCleanup.Retention:   {Days} days", auditLogRetentionDays);
+startupLogger.LogInformation("  RefreshTokenCleanup.Interval:  {Minutes} min", cleanupIntervalMinutes);
+startupLogger.LogInformation("  RefreshTokenCleanup.Retention: {Days} days", auditLogRetentionDays);
 startupLogger.LogInformation("============================================");
 startupLogger.LogInformation("ServicioRESTEjecucionComandos is running!");
 startupLogger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);

@@ -1,2 +1,0 @@
-ServicioRESTEjecucionComandos - License
-Copyright (c) SAFI. All rights reserved.

@@ -44,7 +44,12 @@ var sqliteConnectionString = $"Data Source={sqliteDbPath}";
 var builder = WebApplication.CreateBuilder(args);
 
 // Override RefreshTokenDatabase connection string to use absolute ProgramData path
-builder.Configuration.GetSection("ConnectionStrings")["RefreshTokenDatabase"] = sqliteConnectionString;
+// Skip override when running under test (in-memory SQLite databases)
+var existingRefreshTokenConnectionString = builder.Configuration.GetConnectionString("RefreshTokenDatabase");
+if (string.IsNullOrEmpty(existingRefreshTokenConnectionString) || !existingRefreshTokenConnectionString.Contains("mode=memory"))
+{
+    builder.Configuration.GetSection("ConnectionStrings")["RefreshTokenDatabase"] = sqliteConnectionString;
+}
 
 // Override Serilog log file path to use ProgramData directory
 builder.Configuration["Serilog:WriteTo:1:Args:path"] = Path.Combine(serviceLogsDir, "log-.txt");

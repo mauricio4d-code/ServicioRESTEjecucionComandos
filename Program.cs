@@ -541,6 +541,15 @@ app.MapHealthChecks("/api/health", new Microsoft.AspNetCore.Diagnostics.HealthCh
 // Log the service URL(s) for easy access
 // -----------------------------------------------------------------------
 var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+
+// Read additional configuration values for startup summary
+var dailyCodes = builder.Configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
+var excludedCodes = builder.Configuration.GetSection("QueueConfig:ExcludedCodes").Get<string[]>() ?? Array.Empty<string>();
+var accessTokenMinutes = builder.Configuration.GetValue<int>("Jwt:AccessTokenMinutes");
+var refreshTokenDays = builder.Configuration.GetValue<int>("Jwt:RefreshTokenDays");
+var cleanupIntervalMinutes = builder.Configuration.GetValue<int>("RefreshTokenCleanup:CleanupIntervalMinutes");
+var auditLogRetentionDays = builder.Configuration.GetValue<int>("RefreshTokenCleanup:AuditLogRetentionDays");
+
 var configuredUrl = app.Configuration["Kestrel:Endpoints:Http:Url"] ?? "http://localhost:5000";
 
 // Parse the configured URL to extract host and port
@@ -569,6 +578,16 @@ else
     accessibleAddresses = new[] { configuredUrl };
 }
 
+startupLogger.LogInformation("============================================");
+startupLogger.LogInformation("Configuration Summary:");
+startupLogger.LogInformation("  QueueConfig.DailyCodes:        [{Codes}]", string.Join(", ", dailyCodes));
+startupLogger.LogInformation("  QueueConfig.ExcludedCodes:       [{Codes}]", string.Join(", ", excludedCodes));
+startupLogger.LogInformation("  ServiceDb.Provider:            {Provider}", serviceDbProvider);
+startupLogger.LogInformation("  Authentication.Provider:       {Provider}", authenticationProvider);
+startupLogger.LogInformation("  Jwt.AccessTokenMinutes:        {Minutes}", accessTokenMinutes);
+startupLogger.LogInformation("  Jwt.RefreshTokenDays:          {Days}", refreshTokenDays);
+startupLogger.LogInformation("  RefreshTokenCleanup.Interval:    {Minutes} min", cleanupIntervalMinutes);
+startupLogger.LogInformation("  RefreshTokenCleanup.Retention:   {Days} days", auditLogRetentionDays);
 startupLogger.LogInformation("============================================");
 startupLogger.LogInformation("ServicioRESTEjecucionComandos is running!");
 startupLogger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);

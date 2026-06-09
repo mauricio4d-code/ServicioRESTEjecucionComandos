@@ -74,10 +74,12 @@ public class ServiceRestartMonitorService : BackgroundService
     /// </summary>
     private async Task CheckAndRestartAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("ServiceRestart: Starting flag check cycle for service '{Service}'.", _windowsServiceName);
+
         // If no service name configured, skip to save resources
         if (string.IsNullOrWhiteSpace(_windowsServiceName))
         {
-            _logger.LogDebug("ServiceRestart: No WindowsServiceName configured. Skipping check.");
+            _logger.LogInformation("ServiceRestart: No WindowsServiceName configured. Skipping check.");
             return;
         }
 
@@ -97,6 +99,7 @@ public class ServiceRestartMonitorService : BackgroundService
         try
         {
             string querySql = "SELECT \"id\", \"reiniciar\" FROM reiniciar_servicio";
+            _logger.LogInformation("ServiceRestart: Querying reiniciar_servicio table from database.");
             var statuses = await serviceDbContext
                 .Database
                 .SqlQueryRaw<ServicioRESTEjecucionComandos.Models.ServiceRestartStatus>(querySql)
@@ -104,11 +107,12 @@ public class ServiceRestartMonitorService : BackgroundService
 
             if (!statuses.Any())
             {
-                _logger.LogDebug("ServiceRestart: No rows found in reiniciar_servicio table.");
+                _logger.LogInformation("ServiceRestart: No rows found in reiniciar_servicio table.");
                 return;
             }
 
             reiniciarFlag = statuses.First().Reiniciar;
+            _logger.LogInformation("ServiceRestart: Flag value retrieved from database: {FlagValue}.", reiniciarFlag);
         }
         catch (Exception ex)
         {
@@ -118,7 +122,7 @@ public class ServiceRestartMonitorService : BackgroundService
 
         if (!reiniciarFlag)
         {
-            _logger.LogDebug("ServiceRestart: Flag is false. No restart needed.");
+            _logger.LogInformation("ServiceRestart: Flag is false. No restart needed.");
             return;
         }
 

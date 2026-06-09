@@ -1,4 +1,5 @@
 using System.ServiceProcess;
+using System.Runtime.InteropServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using ServicioRESTEjecucionComandos.Data;
@@ -77,6 +78,13 @@ public class ServiceRestartMonitorService : BackgroundService
         if (string.IsNullOrWhiteSpace(_windowsServiceName))
         {
             _logger.LogDebug("ServiceRestart: No WindowsServiceName configured. Skipping check.");
+            return;
+        }
+
+        // ServiceController is Windows-only; skip gracefully on non-Windows platforms
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            _logger.LogWarning("ServiceRestart: ServiceController API is not available on non-Windows platforms. Skipping restart check.");
             return;
         }
 
@@ -199,6 +207,7 @@ public class ServiceRestartMonitorService : BackgroundService
     /// <summary>
     /// Determines whether the specified service is currently running.
     /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static bool IsServiceRunning(ServiceController serviceController)
     {
         try

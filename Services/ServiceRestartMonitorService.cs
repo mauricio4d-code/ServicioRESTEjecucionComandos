@@ -178,16 +178,23 @@ public class ServiceRestartMonitorService : BackgroundService
             _logger.LogError(ex, "ServiceRestart: Failed to restart service '{Service}'.", _windowsServiceName);
         }
 
-        // 4. Reset the flag in the remote database
-        try
+        // 4. Reset the flag in the remote database only if restart succeeded
+        if (restartSuccess)
         {
-            await serviceDbContext.Database.ExecuteSqlRawAsync(
-                "UPDATE reiniciar_servicio SET reiniciar = false", stoppingToken);
-            _logger.LogInformation("ServiceRestart: Flag reset to false in reiniciar_servicio table.");
+            try
+            {
+                await serviceDbContext.Database.ExecuteSqlRawAsync(
+                    "UPDATE reiniciar_servicio SET reiniciar = false", stoppingToken);
+                _logger.LogInformation("ServiceRestart: Flag reset to false in reiniciar_servicio table.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ServiceRestart: Failed to reset flag in reiniciar_servicio table.");
+            }
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogError(ex, "ServiceRestart: Failed to reset flag in reiniciar_servicio table.");
+            _logger.LogWarning("ServiceRestart: Restart failed. Flag remains true and will be retried on the next check cycle.");
         }
 
         // 5. Log the restart event to local SQLite

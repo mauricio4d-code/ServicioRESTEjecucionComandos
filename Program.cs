@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
@@ -13,15 +14,47 @@ using ServicioRESTEjecucionComandos.Hubs;
 using ServicioRESTEjecucionComandos.Services;
 using ServicioRESTEjecucionComandos.HealthChecks;
 
+var builder = WebApplication.CreateBuilder(args);
+
 // -----------------------------------------------------------------------
-// Ensure Logs directory exists before starting
+// Production: Ensure ProgramData directory exists for SQLite DB and Logs
+// Only applies when ASPNETCORE_ENVIRONMENT=Production
 // -----------------------------------------------------------------------
-if (!Directory.Exists("Logs"))
+if (builder.Environment.IsProduction())
 {
-    Directory.CreateDirectory("Logs");
+    var serviceDataDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "ServicioRESTEjecucionComandos");
+    var serviceLogsDir = Path.Combine(serviceDataDir, "Logs");
+
+    if (!Directory.Exists(serviceDataDir))
+    {
+        Directory.CreateDirectory(serviceDataDir);
+    }
+    if (!Directory.Exists(serviceLogsDir))
+    {
+        Directory.CreateDirectory(serviceLogsDir);
+    }
+
+    var sqliteDbPath = Path.Combine(serviceDataDir, "ServicioRESTEjecucionComandos.db");
+    var sqliteConnectionString = $"Data Source={sqliteDbPath}";
+
+    // Override RefreshTokenDatabase connection string to use absolute ProgramData path
+    // Skip override when running under test (in-memory SQLite databases)
+    var existingRefreshTokenConnectionString = builder.Configuration.GetConnectionString("RefreshTokenDatabase");
+    if (string.IsNullOrEmpty(existingRefreshTokenConnectionString) || !existingRefreshTokenConnectionString.Contains("mode=memory"))
+    {
+        builder.Configuration.GetSection("ConnectionStrings")["RefreshTokenDatabase"] = sqliteConnectionString;
+    }
+
+    // Override Serilog log file path to use ProgramData directory
+    builder.Configuration["Serilog:WriteTo:1:Args:path"] = Path.Combine(serviceLogsDir, "log-.txt");
 }
 
-var builder = WebApplication.CreateBuilder(args);
+// -----------------------------------------------------------------------
+// Windows Service support (dual-mode: works as console and Windows Service)
+// -----------------------------------------------------------------------
+builder.Host.UseWindowsService();
 
 // -----------------------------------------------------------------------
 // Serilog configuration (reads from appsettings.json Serilog section)
@@ -119,6 +152,7 @@ builder.Services.AddScoped<AuthAuditLogRepository>();
 builder.Services.AddScoped<ETLExecutionHistoryRepository>();
 builder.Services.AddScoped<EtlScheduleRepository>();
 builder.Services.AddScoped<ETLExecutionHistoryScheduledRepository>();
+builder.Services.AddScoped<ServiceRestartLogRepository>();
 
 // -----------------------------------------------------------------------
 // Service registrations
@@ -151,6 +185,9 @@ builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
 // Register ScheduleSyncService as hosted service (syncs etl_schedule with Hangfire recurring jobs)
 builder.Services.AddHostedService<ScheduleSyncService>();
+
+// Register ServiceRestartMonitorService as hosted service (polls reiniciar_servicio and restarts Windows service)
+builder.Services.AddHostedService<ServiceRestartMonitorService>();
 
 // -----------------------------------------------------------------------
 // SignalR configuration (real-time notifications for scheduled ETL tasks)
@@ -447,6 +484,28 @@ using (var scope = app.Services.CreateScope())
     {
         logger.LogError(ex, "An error occurred creating the Service database schema.");
     }
+
+    // Create service_restart_log table in SQLite (tracks Windows service restart history)
+    try
+    {
+        var refreshTokenDbContext = services.GetRequiredService<RefreshTokenDbContext>();
+        refreshTokenDbContext.Database.ExecuteSqlRaw(@"
+            CREATE TABLE IF NOT EXISTS ""service_restart_log"" (
+                ""Id"" INTEGER PRIMARY KEY AUTOINCREMENT,
+                ""ServiceName"" TEXT NOT NULL,
+                ""RestartedAt"" TEXT NOT NULL,
+                ""Status"" TEXT NOT NULL
+            );
+        ");
+        refreshTokenDbContext.Database.ExecuteSqlRaw(@"
+            CREATE INDEX IF NOT EXISTS ""IX_service_restart_log_ServiceName"" ON ""service_restart_log"" (""ServiceName"");
+        ");
+        logger.LogInformation("Service restart log table ensured (service_restart_log created if not exists).");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "An error occurred creating the service_restart_log table.");
+    }
 }
 
 // Configure the HTTP request pipeline
@@ -505,6 +564,15 @@ app.MapHealthChecks("/api/health", new Microsoft.AspNetCore.Diagnostics.HealthCh
 // Log the service URL(s) for easy access
 // -----------------------------------------------------------------------
 var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+
+// Read additional configuration values for startup summary
+var dailyCodes = builder.Configuration.GetSection("QueueConfig:DailyCodes").Get<string[]>() ?? Array.Empty<string>();
+var excludedCodes = builder.Configuration.GetSection("QueueConfig:ExcludedCodes").Get<string[]>() ?? Array.Empty<string>();
+var accessTokenMinutes = builder.Configuration.GetValue<int>("Jwt:AccessTokenMinutes");
+var refreshTokenDays = builder.Configuration.GetValue<int>("Jwt:RefreshTokenDays");
+var cleanupIntervalMinutes = builder.Configuration.GetValue<int>("RefreshTokenCleanup:CleanupIntervalMinutes");
+var auditLogRetentionDays = builder.Configuration.GetValue<int>("RefreshTokenCleanup:AuditLogRetentionDays");
+
 var configuredUrl = app.Configuration["Kestrel:Endpoints:Http:Url"] ?? "http://localhost:5000";
 
 // Parse the configured URL to extract host and port
@@ -533,6 +601,24 @@ else
     accessibleAddresses = new[] { configuredUrl };
 }
 
+startupLogger.LogInformation("============================================");
+startupLogger.LogInformation("Configuration Summary:");
+startupLogger.LogInformation("  QueueConfig.DailyCodes:        [{Codes}]", string.Join(", ", dailyCodes));
+startupLogger.LogInformation("  QueueConfig.ExcludedCodes:     [{Codes}]", string.Join(", ", excludedCodes));
+startupLogger.LogInformation("  ServiceDb.Provider:            {Provider}", serviceDbProvider);
+startupLogger.LogInformation("  Authentication.Provider:       {Provider}", authenticationProvider);
+startupLogger.LogInformation("  Jwt.AccessTokenMinutes:        {Minutes}", accessTokenMinutes);
+startupLogger.LogInformation("  Jwt.RefreshTokenDays:          {Days}", refreshTokenDays);
+startupLogger.LogInformation("  RefreshTokenCleanup.Interval:  {Minutes} min", cleanupIntervalMinutes);
+startupLogger.LogInformation("  RefreshTokenCleanup.Retention: {Days} days", auditLogRetentionDays);
+
+// ServiceRestart configuration
+var restartServiceName = builder.Configuration.GetValue<string>("ServiceRestart:WindowsServiceName");
+var restartCheckInterval = builder.Configuration.GetValue<int>("ServiceRestart:CheckIntervalMinutes");
+var restartMinMargin = builder.Configuration.GetValue<int>("ServiceRestart:MinRestartMarginMinutes");
+startupLogger.LogInformation("  ServiceRestart.ServiceName:    {Service}", string.IsNullOrEmpty(restartServiceName) ? "(not configured)" : restartServiceName);
+startupLogger.LogInformation("  ServiceRestart.CheckInterval:  {Minutes} min", restartCheckInterval);
+startupLogger.LogInformation("  ServiceRestart.MinMargin:      {Minutes} min", restartMinMargin);
 startupLogger.LogInformation("============================================");
 startupLogger.LogInformation("ServicioRESTEjecucionComandos is running!");
 startupLogger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);

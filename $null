@@ -1,0 +1,9 @@
+Invoke-RestMethod : BlobNotFoundThe specified blob does not exist.
+RequestId:bbdc7d56-a01e-0056-689f-f44c18000000
+Time:2026-06-05T04:00:34.2683061Z
+At line:1 char:1
++ Invoke-RestMethod -Uri 'https://api.nuget.org/v3/registration5-semver ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-RestMethod], WebExc 
+   eption
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeRestMethodCommand

@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+  servicio-rest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: servicio-rest-ejecucion
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
+      - ConnectionStrings__AuthDatabase=Data Source=c:\auth-db\analyze.db3
+      - ConnectionStrings__RefreshTokenDatabase=Data Source=c:\data\ServicioRESTEjecucionComandos.db
+      - ConnectionStrings__ServiceDatabase=Host=host.docker.internal;Port=5433;Database=asfiws;Username=postgres;Password=q23tgsdf5677!
+      - DataxConfig__ExePath=C:\ETL\Datax.SAFI.Downloader.exe
+    volumes:
+      - C:\Users\mauri\Desktop\Santos\DB\analyze:c:\auth-db
+      - sqlite-data:c:\data
+      - logs-data:c:\app\Logs
+      - C:\Users\mauri\Desktop\Santos\ZPruebaETL\Datax.SAFI.Downloader\publish:c:\ETL
+    restart: unless-stopped
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "powershell -Command (Invoke-WebRequest -Uri http://localhost:5000/api/health -UseBasicParsing).StatusCode -eq 200"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime-kuma-data:c:\app\data
+    restart: unless-stopped
+    depends_on:
+      servicio-rest:
+        condition: service_started
+    networks:
+      - monitoring
+
+volumes:
+  sqlite-data:
+    driver: local
+  logs-data:
+    driver: local
+  uptime-kuma-data:
+    driver: local
+
+networks:
+  monitoring:
+    driver: nat

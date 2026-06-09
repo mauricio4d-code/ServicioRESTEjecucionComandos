@@ -2,12 +2,17 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
     <IsPackable>false</IsPackable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Windows Service support -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
     <!-- EF Core -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
@@ -43,6 +48,10 @@
     <None Remove="ServicioRESTEjecucionComandos.IntegrationTests/**/*.json" />
     <Content Remove="ServicioRESTEjecucionComandos.UnitTests/**/*" />
     <Content Remove="ServicioRESTEjecucionComandos.IntegrationTests/**/*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Monitor-Health.ps1" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

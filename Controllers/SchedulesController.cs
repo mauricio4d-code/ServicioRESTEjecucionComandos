@@ -69,7 +69,7 @@ public class SchedulesController : ControllerBase
         var schedule = new EtlSchedule
         {
             Params = dto.Params,
-            CronExpression = dto.CronExpression,
+            CronExpression = dto.CronExpression ?? string.Empty,
             IsActive = true
         };
 
@@ -98,7 +98,7 @@ public class SchedulesController : ControllerBase
         }
 
         schedule.Params = dto.Params;
-        schedule.CronExpression = dto.CronExpression;
+        schedule.CronExpression = dto.CronExpression ?? string.Empty;
         schedule.IsActive = dto.IsActive ?? schedule.IsActive;
         schedule.UpdatedAt = DateTime.UtcNow;
 

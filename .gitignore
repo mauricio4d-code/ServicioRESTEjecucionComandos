@@ -50,6 +50,9 @@ packages/
 *.dll
 *.pdb
 
+# Publish output
+publish/
+
 # Entity Framework
 *.db
 *.db-shm

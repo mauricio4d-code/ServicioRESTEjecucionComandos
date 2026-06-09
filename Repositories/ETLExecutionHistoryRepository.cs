@@ -54,7 +54,7 @@ public class ETLExecutionHistoryRepository
     /// <summary>
     /// Gets an ETLExecutionHistory record by its Id.
     /// </summary>
-    public async Task<ETLExecutionHistory?> GetByIdAsync(Guid id)
+    public virtual async Task<ETLExecutionHistory?> GetByIdAsync(Guid id)
     {
         _logger.LogDebug("Querying ETLExecutionHistory from database by Id {HistoryId}.", id);
         var result = await _context.ETLExecutionHistories.FindAsync(id);
@@ -76,7 +76,7 @@ public class ETLExecutionHistoryRepository
     /// <summary>
     /// Updates the status and related fields of an ETLExecutionHistory record atomically.
     /// </summary>
-    public async Task UpdateStatusAsync(Guid id, string status, int? exitCode = null, string? output = null, string? error = null, DateTime? executedAt = null, DateTime? completedAt = null)
+    public virtual async Task UpdateStatusAsync(Guid id, string status, int? exitCode = null, string? output = null, string? error = null, DateTime? executedAt = null, DateTime? completedAt = null)
     {
         _logger.LogInformation("Updating status to {Status} for ETLExecutionHistory in database with Id {HistoryId}.", status, id);
         var item = await _context.ETLExecutionHistories.FindAsync(id);
@@ -134,10 +134,61 @@ public class ETLExecutionHistoryRepository
     }
 
     /// <summary>
+    /// Atomically checks for an active execution and creates a new record if none exists.
+    /// Returns the existing active record if found, or the newly created record otherwise.
+    /// This eliminates the N+1 check-then-insert pattern by performing both operations
+    /// in a single database scope with a single save.
+    /// </summary>
+    public virtual async Task<ETLExecutionHistory> UpsertOrGetActiveAsync(
+        string codEnvio,
+        string codigo,
+        string tipoEntidad,
+        DateOnly fechaDatos,
+        string triggerType = "MANUAL")
+    {
+        // Check for existing active execution first
+        var existing = await _context.ETLExecutionHistories
+            .FirstOrDefaultAsync(x => x.CodEnvio == codEnvio
+                && x.Codigo == codigo
+                && (x.Status == "PENDIENTE" || x.Status == "EN PROCESO"));
+
+        if (existing != null)
+        {
+            _logger.LogWarning(
+                "Active execution already exists for CodEnvio={CodEnvio}, Codigo={Codigo}. " +
+                "Returning existing HistoryId={HistoryId} with status {Status}.",
+                codEnvio, codigo, existing.Id, existing.Status);
+            return existing;
+        }
+
+        // Create new record
+        var history = new ETLExecutionHistory
+        {
+            Id = Guid.NewGuid(),
+            CodEnvio = codEnvio,
+            TipoEntidad = tipoEntidad,
+            FechaDatos = fechaDatos,
+            Codigo = codigo,
+            Status = "PENDIENTE",
+            TriggerType = triggerType
+        };
+
+        _logger.LogInformation(
+            "Creating new ETLExecutionHistory record in database for Codigo {Codigo}, CodEnvio {CodEnvio}.",
+            codigo, codEnvio);
+        await _context.ETLExecutionHistories.AddAsync(history);
+        await _context.SaveChangesAsync();
+        _logger.LogInformation(
+            "ETLExecutionHistory record created in database with Id {HistoryId} and status PENDIENTE.",
+            history.Id);
+        return history;
+    }
+
+    /// <summary>
     /// Queries dtx_seguimiento to verify that a record exists for the given CodEnvio and Codigo combination.
     /// Returns the latest FechaDatos found, or null if no matching record exists.
     /// </summary>
-    public async Task<DtxSeguimientoVerificationResult?> VerifyDtxSeguimientoAsync(string codEnvio, string codigo)
+    public virtual async Task<DtxSeguimientoVerificationResult?> VerifyDtxSeguimientoAsync(string codEnvio, string codigo)
     {
         _logger.LogInformation("[DB] Querying dtx_seguimiento for CodEnvio={CodEnvio}, Codigo={Codigo}.", codEnvio, codigo);
         var results = await _context.Database
@@ -161,7 +212,7 @@ public class ETLExecutionHistoryRepository
     /// <summary>
     /// Updates the status, FechaDatos, and related fields of an ETLExecutionHistory record atomically.
     /// </summary>
-    public async Task UpdateStatusWithFechaDatosAsync(
+    public virtual async Task UpdateStatusWithFechaDatosAsync(
         Guid id,
         string status,
         DateOnly? fechaDatos = null,

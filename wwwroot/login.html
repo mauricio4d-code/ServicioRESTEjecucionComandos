@@ -102,6 +102,47 @@
             min-height: 20px;
         }
 
+        /* Modal overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        /* Modal content */
+        .modal-content {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            padding: 32px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .modal-content p {
+            color: #333333;
+            font-size: 15px;
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+
+        .modal-content .btn {
+            padding: 10px 32px;
+            font-size: 14px;
+        }
+
         /* Navigation bar */
         .nav-bar {
             display: flex;
@@ -135,7 +176,7 @@
 
 <body>
     <div class="container">
-        <h1>Iniciar Sesión</h1>
+        <h1>Iniciar SesiónQWEQWE</h1>
         <p class="description">Ingrese sus credenciales para continuar.</p>
 
         <div class="form-group">
@@ -152,8 +193,35 @@
         <div id="loginError" class="error-message"></div>
     </div>
 
+    <!-- Validation Modal -->
+    <div id="validationModal" class="modal-overlay">
+        <div class="modal-content">
+            <p id="validationModalMessage"></p>
+            <button class="btn btn-primary" onclick="hideValidationModal()">Aceptar</button>
+        </div>
+    </div>
+
     <script src="auth.js"></script>
     <script>
+        // ========================
+        //  Validation Modal Helpers
+        // ========================
+        function showValidationModal(message) {
+            document.getElementById("validationModalMessage").textContent = message;
+            document.getElementById("validationModal").classList.add("visible");
+        }
+
+        function hideValidationModal() {
+            document.getElementById("validationModal").classList.remove("visible");
+        }
+
+        // ========================
+        //  Email validation
+        // ========================
+        function isValidEmail(email) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        }
+
         // ========================
         //  Login
         // ========================
@@ -162,6 +230,18 @@
             const password = document.getElementById("passwordInput").value;
             const errorEl = document.getElementById("loginError");
             const btn = document.getElementById("loginBtn");
+
+            // Validate email is provided
+            if (!email) {
+                showValidationModal("Debe llenar los datos.");
+                return;
+            }
+
+            // Validate email format
+            if (!isValidEmail(email)) {
+                showValidationModal("El formato del email no es válido.");
+                return;
+            }
 
             errorEl.textContent = "";
             btn.disabled = true;
@@ -200,6 +280,24 @@
         });
         document.getElementById("passwordInput").addEventListener("keydown", (e) => {
             if (e.key === "Enter") login();
+        });
+
+        // ========================
+        //  Close modal on overlay click
+        // ========================
+        document.getElementById("validationModal").addEventListener("click", function (e) {
+            if (e.target === this) {
+                hideValidationModal();
+            }
+        });
+
+        // ========================
+        //  Close modal on Escape key
+        // ========================
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") {
+                hideValidationModal();
+            }
         });
 
         // ========================

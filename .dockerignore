@@ -1,0 +1,56 @@
+# Build outputs
+bin/
+obj/
+out/
+
+# IDE and editor files
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.rsuser
+*.sln.iml
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+Logs/
+*.log
+
+# Database files (generated at runtime)
+*.db
+*.db-shm
+*.db-wal
+
+# NuGet
+packages/
+.nuget/
+*.nupkg
+*.snupkg
+
+# Local config overrides
+*.local.json
+
+# Test projects (not needed in Docker build)
+ServicioRESTEjecucionComandos.UnitTests/
+ServicioRESTEjecucionComandos.IntegrationTests/
+
+# Git
+.git/
+.gitignore
+
+# Plans and docs
+plans/
+.roo/
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Solution file - not needed since we build csproj directly
+*.sln

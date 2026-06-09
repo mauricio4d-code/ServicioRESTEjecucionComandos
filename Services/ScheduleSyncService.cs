@@ -113,7 +113,10 @@ public class ScheduleSyncService : BackgroundService
                         jobId,
                         service => service.ExecuteScheduledJobByIdAsync(schedule.Id),
                         schedule.CronExpression,
-                        TimeZoneInfo.Local);
+                        new RecurringJobOptions
+                        {
+                            TimeZone = TimeZoneInfo.Local
+                        });
 
                     _logger.LogDebug(
                         "Synced recurring job {JobId} for schedule {ScheduleId} with cron '{Cron}'.",

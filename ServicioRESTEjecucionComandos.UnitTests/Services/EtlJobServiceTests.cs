@@ -17,6 +17,7 @@ public class EtlJobServiceTests : IDisposable
     private readonly Mock<IServiceScope> _scopeMock;
     private readonly Mock<IServiceProvider> _serviceProviderMock;
     private readonly Mock<ETLExecutionHistoryRepository> _historyRepoMock;
+    private readonly Mock<DtxProcessRepository> _dtxProcessRepoMock;
     private readonly Mock<CommandExecutor> _executorMock;
     private readonly Mock<ILogger<EtlJobService>> _loggerMock;
     private readonly Mock<ExecutionNotifier> _notifierMock;
@@ -34,6 +35,13 @@ public class EtlJobServiceTests : IDisposable
 
         var repoLoggerMock = new Mock<ILogger<ETLExecutionHistoryRepository>>();
         _historyRepoMock = new Mock<ETLExecutionHistoryRepository>(null!, repoLoggerMock.Object);
+
+        var dtxProcessLoggerMock = new Mock<ILogger<DtxProcessRepository>>();
+        _dtxProcessRepoMock = new Mock<DtxProcessRepository>(null!, dtxProcessLoggerMock.Object);
+        _dtxProcessRepoMock
+            .Setup(r => r.GetRunningProcessesAsync())
+            .ReturnsAsync(new List<DtxProcess>());
+
         _serviceProviderMock = new Mock<IServiceProvider>();
         _scopeMock = new Mock<IServiceScope>();
         _scopeFactoryMock = new Mock<IServiceScopeFactory>();
@@ -42,11 +50,15 @@ public class EtlJobServiceTests : IDisposable
         _scopeMock.Setup(s => s.ServiceProvider).Returns(_serviceProviderMock.Object);
         _scopeFactoryMock.Setup(f => f.CreateScope()).Returns(_scopeMock.Object);
 
-        // Setup service provider to return mocked history repo
+        // Setup service provider to return mocked repositories
         // GetRequiredService<T>() internally calls GetService(typeof(T)), so we mock that.
         _serviceProviderMock
             .Setup(sp => sp.GetService(typeof(ETLExecutionHistoryRepository)))
             .Returns(_historyRepoMock.Object);
+
+        _serviceProviderMock
+            .Setup(sp => sp.GetService(typeof(DtxProcessRepository)))
+            .Returns(_dtxProcessRepoMock.Object);
 
         // Configuration with default daily codes
         var configData = new Dictionary<string, string?>

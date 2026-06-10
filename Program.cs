@@ -152,7 +152,7 @@ builder.Services.AddScoped<AuthAuditLogRepository>();
 builder.Services.AddScoped<ETLExecutionHistoryRepository>();
 builder.Services.AddScoped<EtlScheduleRepository>();
 builder.Services.AddScoped<ETLExecutionHistoryScheduledRepository>();
-builder.Services.AddScoped<ServiceRestartLogRepository>();
+builder.Services.AddScoped<DtxProcessRepository>();
 
 // -----------------------------------------------------------------------
 // Service registrations
@@ -485,27 +485,6 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "An error occurred creating the Service database schema.");
     }
 
-    // Create service_restart_log table in SQLite (tracks Windows service restart history)
-    try
-    {
-        var refreshTokenDbContext = services.GetRequiredService<RefreshTokenDbContext>();
-        refreshTokenDbContext.Database.ExecuteSqlRaw(@"
-            CREATE TABLE IF NOT EXISTS ""service_restart_log"" (
-                ""Id"" INTEGER PRIMARY KEY AUTOINCREMENT,
-                ""ServiceName"" TEXT NOT NULL,
-                ""RestartedAt"" TEXT NOT NULL,
-                ""Status"" TEXT NOT NULL
-            );
-        ");
-        refreshTokenDbContext.Database.ExecuteSqlRaw(@"
-            CREATE INDEX IF NOT EXISTS ""IX_service_restart_log_ServiceName"" ON ""service_restart_log"" (""ServiceName"");
-        ");
-        logger.LogInformation("Service restart log table ensured (service_restart_log created if not exists).");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred creating the service_restart_log table.");
-    }
 }
 
 // Configure the HTTP request pipeline
@@ -601,6 +580,16 @@ else
     accessibleAddresses = new[] { configuredUrl };
 }
 
+// ServiceRestart configuration
+var restartServiceName = builder.Configuration.GetValue<string>("ServiceRestart:WindowsServiceName");
+var restartCheckInterval = builder.Configuration.GetValue<int>("ServiceRestart:CheckIntervalMinutes");
+var restartRunningMinutesThreshold = builder.Configuration.GetValue<int>("ServiceRestart:RunningMinutesThreshold");
+var processCheckWaitSeconds = builder.Configuration.GetValue<int>("QueueConfig:ProcessCheckWaitSeconds");
+startupLogger.LogInformation("  ServiceRestart.ServiceName:             {Service}", string.IsNullOrEmpty(restartServiceName) ? "(not configured)" : restartServiceName);
+startupLogger.LogInformation("  ServiceRestart.CheckInterval:           {Minutes} min", restartCheckInterval);
+startupLogger.LogInformation("  ServiceRestart.RunningMinutesThreshold: {Minutes} min", restartRunningMinutesThreshold);
+startupLogger.LogInformation("  QueueConfig.ProcessCheckWaitSeconds:    {Seconds} s", processCheckWaitSeconds);
+
 startupLogger.LogInformation("============================================");
 startupLogger.LogInformation("Configuration Summary:");
 startupLogger.LogInformation("  QueueConfig.DailyCodes:        [{Codes}]", string.Join(", ", dailyCodes));
@@ -612,13 +601,6 @@ startupLogger.LogInformation("  Jwt.RefreshTokenDays:          {Days}", refreshT
 startupLogger.LogInformation("  RefreshTokenCleanup.Interval:  {Minutes} min", cleanupIntervalMinutes);
 startupLogger.LogInformation("  RefreshTokenCleanup.Retention: {Days} days", auditLogRetentionDays);
 
-// ServiceRestart configuration
-var restartServiceName = builder.Configuration.GetValue<string>("ServiceRestart:WindowsServiceName");
-var restartCheckInterval = builder.Configuration.GetValue<int>("ServiceRestart:CheckIntervalMinutes");
-var restartMinMargin = builder.Configuration.GetValue<int>("ServiceRestart:MinRestartMarginMinutes");
-startupLogger.LogInformation("  ServiceRestart.ServiceName:    {Service}", string.IsNullOrEmpty(restartServiceName) ? "(not configured)" : restartServiceName);
-startupLogger.LogInformation("  ServiceRestart.CheckInterval:  {Minutes} min", restartCheckInterval);
-startupLogger.LogInformation("  ServiceRestart.MinMargin:      {Minutes} min", restartMinMargin);
 startupLogger.LogInformation("============================================");
 startupLogger.LogInformation("ServicioRESTEjecucionComandos is running!");
 startupLogger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);

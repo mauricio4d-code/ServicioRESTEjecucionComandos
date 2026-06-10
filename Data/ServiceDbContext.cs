@@ -66,5 +66,9 @@ public class ServiceDbContext : DbContext
         // BaseDatos is a read-only legacy table - excluded from migrations.
         // Query it directly via Database.SqlQueryRaw<BaseDatos>().
         modelBuilder.Ignore<BaseDatos>();
+
+        // DtxProcess is a read-only legacy table - excluded from migrations.
+        // Query it directly via DtxProcessRepository (raw SQL).
+        modelBuilder.Ignore<DtxProcess>();
     }
 }

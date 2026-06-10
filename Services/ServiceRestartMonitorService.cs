@@ -1,6 +1,5 @@
 using System.ServiceProcess;
 using System.Runtime.InteropServices;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
@@ -9,16 +8,17 @@ using ServicioRESTEjecucionComandos.Repositories;
 namespace ServicioRESTEjecucionComandos.Services;
 
 /// <summary>
-/// Background service that periodically checks the <c>reiniciar_servicio</c> table
-/// in the service database. When the flag is <c>true</c>, it restarts the configured
-/// Windows service (respecting a minimum restart margin) and resets the flag.
+/// Background service that periodically checks the <c>dtx_process</c> table
+/// in the service database for long-running processes. When a RUNNING process
+/// exceeds the configured <c>RunningMinutesThreshold</c>, it restarts the
+/// configured Windows service and updates the process status in <c>dtx_process</c>.
 /// </summary>
 public class ServiceRestartMonitorService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ServiceRestartMonitorService> _logger;
     private readonly TimeSpan _checkInterval;
-    private readonly int _minRestartMarginMinutes;
+    private readonly TimeSpan _runningMinutesThreshold;
     private readonly string? _windowsServiceName;
 
     /// <summary>
@@ -34,19 +34,19 @@ public class ServiceRestartMonitorService : BackgroundService
 
         _checkInterval = TimeSpan.FromMinutes(
             configuration.GetValue<int>("ServiceRestart:CheckIntervalMinutes", 5));
-        _minRestartMarginMinutes = configuration.GetValue<int>(
-            "ServiceRestart:MinRestartMarginMinutes", 30);
+        _runningMinutesThreshold = TimeSpan.FromMinutes(
+            configuration.GetValue<int>("ServiceRestart:RunningMinutesThreshold", 30));
         _windowsServiceName = configuration.GetValue<string>("ServiceRestart:WindowsServiceName");
     }
 
     /// <summary>
-    /// Main execution loop: polls the remote database and triggers restarts when needed.
+    /// Main execution loop: polls the dtx_process table and triggers restarts when needed.
     /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "ServiceRestartMonitorService started. Interval: {Interval}min, MinMargin: {Margin}min, TargetService: {Service}.",
-            _checkInterval.TotalMinutes, _minRestartMarginMinutes,
+            "ServiceRestartMonitorService started. Interval: {Interval}min, RunningThreshold: {Threshold}min, TargetService: {Service}.",
+            _checkInterval.TotalMinutes, _runningMinutesThreshold.TotalMinutes,
             string.IsNullOrEmpty(_windowsServiceName) ? "(not configured)" : _windowsServiceName);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -70,11 +70,12 @@ public class ServiceRestartMonitorService : BackgroundService
     }
 
     /// <summary>
-    /// Performs a single check cycle: query flag, validate margin, restart, reset flag, log.
+    /// Performs a single check cycle: query dtx_process for long-running processes,
+    /// validate conditions, restart the Windows service, and update process status.
     /// </summary>
     private async Task CheckAndRestartAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("ServiceRestart: Starting flag check cycle for service '{Service}'.", _windowsServiceName);
+        _logger.LogInformation("ServiceRestart: Starting dtx_process check cycle for service '{Service}'.", _windowsServiceName);
 
         // If no service name configured, skip to save resources
         if (string.IsNullOrWhiteSpace(_windowsServiceName))
@@ -91,65 +92,31 @@ public class ServiceRestartMonitorService : BackgroundService
         }
 
         using var scope = _serviceProvider.CreateScope();
-        var serviceDbContext = scope.ServiceProvider.GetRequiredService<ServiceDbContext>();
-        var restartLogRepo = scope.ServiceProvider.GetRequiredService<ServiceRestartLogRepository>();
+        var dtxProcessRepo = scope.ServiceProvider.GetRequiredService<DtxProcessRepository>();
 
-        // 1. Query the reiniciar_servicio flag
-        bool reiniciarFlag;
+        // 1. Query dtx_process for RUNNING processes older than the threshold
+        List<DtxProcess> longRunningProcesses;
         try
         {
-            string querySql = "SELECT \"id\", \"reiniciar\" FROM reiniciar_servicio";
-            _logger.LogInformation("ServiceRestart: Querying reiniciar_servicio table from database.");
-            var statuses = await serviceDbContext
-                .Database
-                .SqlQueryRaw<ServicioRESTEjecucionComandos.Models.ServiceRestartStatus>(querySql)
-                .ToListAsync(stoppingToken);
-
-            if (!statuses.Any())
-            {
-                _logger.LogInformation("ServiceRestart: No rows found in reiniciar_servicio table.");
-                return;
-            }
-
-            reiniciarFlag = statuses.First().Reiniciar;
-            _logger.LogInformation("ServiceRestart: Flag value retrieved from database: {FlagValue}.", reiniciarFlag);
+            _logger.LogInformation("ServiceRestart: Querying dtx_process for RUNNING processes older than {Threshold}min.", _runningMinutesThreshold.TotalMinutes);
+            longRunningProcesses = await dtxProcessRepo.GetRunningProcessesOlderThanAsync(_runningMinutesThreshold);
+            _logger.LogInformation("ServiceRestart: Found {Count} long-running processes.", longRunningProcesses.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "ServiceRestart: Failed to query reiniciar_servicio table.");
+            _logger.LogError(ex, "ServiceRestart: Failed to query dtx_process table.");
             return;
         }
 
-        if (!reiniciarFlag)
+        if (longRunningProcesses.Count == 0)
         {
-            _logger.LogInformation("ServiceRestart: Flag is false. No restart needed.");
+            _logger.LogInformation("ServiceRestart: No long-running processes found. No restart needed.");
             return;
         }
 
-        _logger.LogInformation("ServiceRestart: Flag is true for service '{Service}'. Evaluating restart.", _windowsServiceName);
+        _logger.LogInformation("ServiceRestart: Found long-running processes. Evaluating restart for '{Service}'.", _windowsServiceName);
 
-        // 2. Check minimum restart margin from local SQLite log
-        try
-        {
-            var lastRestart = await restartLogRepo.GetLastRestartAsync(_windowsServiceName);
-            if (lastRestart.HasValue)
-            {
-                var timeSinceLastRestart = (DateTime.UtcNow - lastRestart.Value).TotalMinutes;
-                if (timeSinceLastRestart < _minRestartMarginMinutes)
-                {
-                    _logger.LogWarning(
-                        "ServiceRestart: Last restart was {Minutes}min ago (margin: {Margin}min). Skipping restart for '{Service}'.",
-                        timeSinceLastRestart, _minRestartMarginMinutes, _windowsServiceName);
-                    return;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "ServiceRestart: Failed to query last restart time. Proceeding with restart.");
-        }
-
-        // 3. Attempt to restart the Windows service
+        // 2. Attempt to restart the Windows service
         bool restartSuccess = false;
         try
         {
@@ -178,40 +145,28 @@ public class ServiceRestartMonitorService : BackgroundService
             _logger.LogError(ex, "ServiceRestart: Failed to restart service '{Service}'.", _windowsServiceName);
         }
 
-        // 4. Reset the flag in the remote database only if restart succeeded
-        if (restartSuccess)
+        // 3. Update dtx_process status for each long-running process
+        foreach (var process in longRunningProcesses)
         {
             try
             {
-                await serviceDbContext.Database.ExecuteSqlRawAsync(
-                    "UPDATE reiniciar_servicio SET reiniciar = false", stoppingToken);
-                _logger.LogInformation("ServiceRestart: Flag reset to false in reiniciar_servicio table.");
+                string newStatus = restartSuccess ? "COMPLETED" : "NOTCOMPLETED";
+                _logger.LogInformation("ServiceRestart: Updating dtx_process record {IdProcess} to status {Status}.", process.IdProcess, newStatus);
+                await dtxProcessRepo.UpdateStatusAsync(process.IdProcess, newStatus, DateTime.UtcNow);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "ServiceRestart: Failed to reset flag in reiniciar_servicio table.");
+                _logger.LogError(ex, "ServiceRestart: Failed to update dtx_process record {IdProcess}.", process.IdProcess);
             }
+        }
+
+        if (restartSuccess)
+        {
+            _logger.LogInformation("ServiceRestart: Restart completed successfully. Updated {Count} process records.", longRunningProcesses.Count);
         }
         else
         {
-            _logger.LogWarning("ServiceRestart: Restart failed. Flag remains true and will be retried on the next check cycle.");
-        }
-
-        // 5. Log the restart event to local SQLite
-        try
-        {
-            var logEntry = new ServiceRestartLog
-            {
-                ServiceName = _windowsServiceName,
-                RestartedAt = DateTime.UtcNow,
-                Status = restartSuccess ? "Success" : "Failed"
-            };
-            await restartLogRepo.SaveRestartAsync(logEntry);
-            _logger.LogInformation("ServiceRestart: Restart event logged locally (Status: {Status}).", logEntry.Status);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "ServiceRestart: Failed to save restart log entry.");
+            _logger.LogWarning("ServiceRestart: Restart failed. Process records marked as NOTCOMPLETED and will be retried on the next check cycle.");
         }
     }
 

@@ -232,10 +232,10 @@ public class CommandExecutorTests
         result.Success.Should().BeTrue();
         result.ExitCode.Should().Be(0);
         // Output should contain the truncation prefix
-        result.Output.Should().Contain("[truncated]");
+        result.Output.Should().Contain("[truncado]");
         // Output should end with the marker (last messages are preserved)
         result.Output.Should().Contain(marker);
         // Total length should be within bounds (MaxOutputLength + prefix length)
-        result.Output.Length.Should().BeLessOrEqualTo(4000 + 15);
+        result.Output.Length.Should().BeLessOrEqualTo(500 + 15);
     }
 }

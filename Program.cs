@@ -406,6 +406,25 @@ using (var scope = app.Services.CreateScope())
         serviceDbContext.Database.ExecuteSqlRaw(createTableSql);
         serviceDbContext.Database.ExecuteSqlRaw(createIndexSql);
 
+        // Create unique partial index to prevent duplicate active executions for the same CodEnvio+Codigo.
+        // This eliminates the race condition in UpsertOrGetActiveAsync by enforcing uniqueness at the DB level.
+        // SQLite does not support partial indexes, so it is skipped (catch-and-retry in the repository handles it).
+        if (serviceDbProvider.ToLower() == "sqlserver")
+        {
+            serviceDbContext.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_unique_active')
+                    CREATE UNIQUE INDEX [IX_hist_etl_execution_unique_active] ON [hist_etl_execution] ([CodEnvio], [Codigo])
+                    WHERE [Status] IN ('PENDIENTE', 'EN PROCESO');");
+        }
+        else if (serviceDbProvider.ToLower() != "sqlite")
+        {
+            // PostgreSQL syntax (default)
+            serviceDbContext.Database.ExecuteSqlRaw(@"
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_hist_etl_execution_unique_active""
+                    ON ""hist_etl_execution"" (""CodEnvio"", ""Codigo"")
+                    WHERE ""Status"" IN ('PENDIENTE', 'EN PROCESO');");
+        }
+
         // Create hist_etl_execution_scheduled table
         string createScheduledTableSql;
         string createScheduledIndexSql;

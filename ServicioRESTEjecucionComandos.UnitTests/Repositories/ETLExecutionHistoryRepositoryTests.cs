@@ -430,4 +430,107 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
         // Assert
         active.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task UpsertOrGetActiveAsync_NoActiveExecution_ShouldCreateNew()
+    {
+        // Arrange
+        string codEnvio = "ENV001";
+        string codigo = "COD001";
+        string tipoEntidad = "TEST";
+        var fechaDatos = DateOnly.FromDateTime(DateTime.Today);
+
+        // Act
+        var result = await _repository.UpsertOrGetActiveAsync(codEnvio, codigo, tipoEntidad, fechaDatos, "MANUAL");
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Status.Should().Be("PENDIENTE");
+        result.CodEnvio.Should().Be(codEnvio);
+        result.Codigo.Should().Be(codigo);
+        result.TipoEntidad.Should().Be(tipoEntidad);
+        result.FechaDatos.Should().Be(fechaDatos);
+        result.TriggerType.Should().Be("MANUAL");
+    }
+
+    [Fact]
+    public async Task UpsertOrGetActiveAsync_ExistingActiveExecution_ShouldReturnExisting()
+    {
+        // Arrange
+        var existing = new ETLExecutionHistory
+        {
+            Id = Guid.NewGuid(),
+            CodEnvio = "ENV001",
+            TipoEntidad = "TEST",
+            FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+            Codigo = "COD001",
+            Status = "EN PROCESO",
+            TriggerType = "MANUAL"
+        };
+        await _context.ETLExecutionHistories.AddAsync(existing);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _repository.UpsertOrGetActiveAsync(
+            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), "MANUAL");
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Id.Should().Be(existing.Id);
+        result.Status.Should().Be("EN PROCESO");
+    }
+
+    [Fact]
+    public async Task UpsertOrGetActiveAsync_ExistingCompletedExecution_ShouldCreateNew()
+    {
+        // Arrange
+        var completed = new ETLExecutionHistory
+        {
+            Id = Guid.NewGuid(),
+            CodEnvio = "ENV001",
+            TipoEntidad = "TEST",
+            FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+            Codigo = "COD001",
+            Status = "EXITOSO",
+            TriggerType = "MANUAL"
+        };
+        await _context.ETLExecutionHistories.AddAsync(completed);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _repository.UpsertOrGetActiveAsync(
+            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), "MANUAL");
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Id.Should().NotBe(completed.Id);
+        result.Status.Should().Be("PENDIENTE");
+    }
+
+    [Fact]
+    public async Task UpsertOrGetActiveAsync_ExistingFailedExecution_ShouldCreateNew()
+    {
+        // Arrange
+        var failed = new ETLExecutionHistory
+        {
+            Id = Guid.NewGuid(),
+            CodEnvio = "ENV001",
+            TipoEntidad = "TEST",
+            FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+            Codigo = "COD001",
+            Status = "FALLIDO",
+            TriggerType = "MANUAL"
+        };
+        await _context.ETLExecutionHistories.AddAsync(failed);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _repository.UpsertOrGetActiveAsync(
+            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), "MANUAL");
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Id.Should().NotBe(failed.Id);
+        result.Status.Should().Be("PENDIENTE");
+    }
 }

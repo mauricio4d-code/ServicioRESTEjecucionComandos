@@ -88,4 +88,14 @@ public class EtlExecutorControllerIntegrationTests : IClassFixture<IntegrationTe
         // Without auth, this returns Unauthorized
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
     }
+
+    [Fact]
+    public async Task GetBatchStatus_WithoutAuth_ReturnsUnauthorized()
+    {
+        // Act
+        var response = await _client.GetAsync("/api/ETLExecutor/status/active");
+
+        // Assert
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+    }
 }

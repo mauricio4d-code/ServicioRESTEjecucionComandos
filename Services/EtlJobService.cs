@@ -184,22 +184,22 @@ public class EtlJobService
                 return;
             }
 
-            // Update status to EN PROCESO only after acquiring a slot
-            _logger.LogInformation("[DB] Updating ETLExecutionHistoryScheduled {HistoryId} status to EN PROCESO.", historyId);
-            await scheduledRepo.UpdateStatusAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
-
             // Check for existing RUNNING processes in dtx_process and wait if needed
             _logger.LogInformation("Checking dtx_process for RUNNING processes before executing ScheduledHistoryId {HistoryId}.", historyId);
             await WaitForNoRunningProcessesAsync(dtxProcessRepo);
 
+            // Update status to EN PROCESO only after waiting for no running processes
+            _logger.LogInformation("[DB] Updating ETLExecutionHistoryScheduled {HistoryId} status to EN PROCESO.", historyId);
+            await scheduledRepo.UpdateStatusAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
+
             // Create dtx_process record for this execution
             var dtxProcess = new DtxProcess
             {
-                AppName = "ServicioRESTEjecucionComandos",
-                ProcessName = $"ETL_Scheduled_{historyId}",
+                AppName = "ETLDATAX",
+                ProcessName = "-",
                 Status = "RUNNING",
                 StartTime = DateTime.UtcNow,
-                Active = true,
+                Active = false,
                 Details = history.Params,
                 CreatedAt = DateTime.UtcNow
             };
@@ -335,13 +335,13 @@ public class EtlJobService
                 return;
             }
 
-            // Update status to EN PROCESO only after acquiring a slot
-            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} status to EN PROCESO.", historyId);
-            await historyRepo.UpdateStatusAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
-
             // Check for existing RUNNING processes in dtx_process and wait if needed
             _logger.LogInformation("Checking dtx_process for RUNNING processes before executing HistoryId {HistoryId}.", historyId);
             await WaitForNoRunningProcessesAsync(dtxProcessRepo);
+
+            // Update status to EN PROCESO only after waiting for no running processes
+            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} status to EN PROCESO.", historyId);
+            await historyRepo.UpdateStatusAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
 
             // Determine Start/End dates based on TriggerType.
             // For MANUAL (Actualizar): FechaDatos already holds the target period.
@@ -377,11 +377,11 @@ public class EtlJobService
             // Create dtx_process record for this execution
             var dtxProcess = new DtxProcess
             {
-                AppName = "ServicioRESTEjecucionComandos",
-                ProcessName = $"ETL_{history.Codigo}_{history.CodEnvio}",
+                AppName = "ETLDATAX",
+                ProcessName = "-",
                 Status = "RUNNING",
                 StartTime = DateTime.UtcNow,
-                Active = true,
+                Active = false,
                 Details = $"HistoryId={historyId}, TriggerType={triggerType}",
                 CreatedAt = DateTime.UtcNow
             };
@@ -522,16 +522,14 @@ public class EtlJobService
 
         while (DateTime.UtcNow - startTime < maxWaitTime)
         {
-            var runningProcesses = await dtxProcessRepo.GetRunningProcessesAsync();
-            if (runningProcesses.Count == 0)
+            var hasRunningProcesses = await dtxProcessRepo.AreRunningProcessesExistAsync();
+            if (!hasRunningProcesses)
             {
                 _logger.LogInformation("No RUNNING processes found in dtx_process. Proceeding.");
                 return;
             }
 
-            _logger.LogInformation(
-                "Found {Count} RUNNING processes in dtx_process. Waiting {WaitSeconds}s before retrying.",
-                runningProcesses.Count, _processCheckWaitSeconds);
+            _logger.LogInformation("RUNNING processes still exist in dtx_process. Waiting {WaitSeconds}s before retrying.", _processCheckWaitSeconds);
             await Task.Delay(_processCheckWaitSeconds * 1000);
         }
 

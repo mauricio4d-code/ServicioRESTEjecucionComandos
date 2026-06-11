@@ -331,4 +331,103 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
         updated.FechaDatos.Should().Be(newFechaDatos);
         updated.ExitCode.Should().Be(0);
     }
+
+    [Fact]
+    public async Task GetAllActiveAsync_ShouldReturnOnlyPendingAndInProgress()
+    {
+        // Arrange
+        var pendingItem = new ETLExecutionHistory
+        {
+            Id = Guid.NewGuid(),
+            CodEnvio = "ENV001",
+            TipoEntidad = "TEST",
+            FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+            Codigo = "COD001",
+            Status = "PENDIENTE"
+        };
+        var inProgressItem = new ETLExecutionHistory
+        {
+            Id = Guid.NewGuid(),
+            CodEnvio = "ENV002",
+            TipoEntidad = "TEST",
+            FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+            Codigo = "COD002",
+            Status = "EN PROCESO"
+        };
+        var successItem = new ETLExecutionHistory
+        {
+            Id = Guid.NewGuid(),
+            CodEnvio = "ENV003",
+            TipoEntidad = "TEST",
+            FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+            Codigo = "COD003",
+            Status = "EXITOSO"
+        };
+        var failedItem = new ETLExecutionHistory
+        {
+            Id = Guid.NewGuid(),
+            CodEnvio = "ENV004",
+            TipoEntidad = "TEST",
+            FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+            Codigo = "COD004",
+            Status = "FALLIDO"
+        };
+
+        await _context.ETLExecutionHistories.AddRangeAsync(pendingItem, inProgressItem, successItem, failedItem);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var active = await _repository.GetAllActiveAsync();
+
+        // Assert
+        active.Should().HaveCount(2);
+        active.Should().OnlyContain(x => x.Status == "PENDIENTE" || x.Status == "EN PROCESO");
+        active.Select(x => x.Id).Should().Contain(pendingItem.Id);
+        active.Select(x => x.Id).Should().Contain(inProgressItem.Id);
+    }
+
+    [Fact]
+    public async Task GetAllActiveAsync_EmptyDatabase_ShouldReturnEmptyList()
+    {
+        // Act
+        var active = await _repository.GetAllActiveAsync();
+
+        // Assert
+        active.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetAllActiveAsync_AllCompleted_ShouldReturnEmptyList()
+    {
+        // Arrange
+        var items = new List<ETLExecutionHistory>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                CodEnvio = "ENV001",
+                TipoEntidad = "TEST",
+                FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+                Codigo = "COD001",
+                Status = "EXITOSO"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                CodEnvio = "ENV002",
+                TipoEntidad = "TEST",
+                FechaDatos = DateOnly.FromDateTime(DateTime.Today),
+                Codigo = "COD002",
+                Status = "FALLIDO"
+            }
+        };
+        await _context.ETLExecutionHistories.AddRangeAsync(items);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var active = await _repository.GetAllActiveAsync();
+
+        // Assert
+        active.Should().BeEmpty();
+    }
 }

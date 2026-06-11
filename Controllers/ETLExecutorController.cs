@@ -260,6 +260,19 @@ public class ETLExecutorController : ControllerBase
     }
 
     /// <summary>
+    /// Returns the current status of all active (PENDIENTE or EN PROCESO) ETLExecutionHistory records.
+    /// Used for batch polling execution progress, replacing per-historyId polling to reduce database load.
+    /// </summary>
+    [HttpGet("status/active")]
+    public async Task<IActionResult> GetAllActiveExecutionStatus()
+    {
+        _logger.LogInformation("[DB] Querying all active ETLExecutionHistory records from hist_etl_execution table.");
+        var items = await _historyRepo.GetAllActiveAsync();
+        _logger.LogInformation("[DB] Batch execution status query completed. Active records returned: {Count}.", items.Count);
+        return Ok(items);
+    }
+
+    /// <summary>
     /// Returns the current status of a ETLExecutionHistory record by its Id (HistoryId).
     /// Used for polling execution progress.
     /// </summary>

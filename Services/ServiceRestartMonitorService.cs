@@ -94,13 +94,13 @@ public class ServiceRestartMonitorService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var dtxProcessRepo = scope.ServiceProvider.GetRequiredService<DtxProcessRepository>();
 
-        // 1. Query dtx_process for RUNNING processes older than the threshold
-        List<DtxProcess> longRunningProcesses;
+        // 1. Query dtx_process for RUNNING process IDs older than the threshold
+        List<long> longRunningProcessIds;
         try
         {
             _logger.LogInformation("ServiceRestart: Querying dtx_process for RUNNING processes older than {Threshold}min.", _runningMinutesThreshold.TotalMinutes);
-            longRunningProcesses = await dtxProcessRepo.GetRunningProcessesOlderThanAsync(_runningMinutesThreshold);
-            _logger.LogInformation("ServiceRestart: Found {Count} long-running processes.", longRunningProcesses.Count);
+            longRunningProcessIds = await dtxProcessRepo.GetRunningProcessIdsOlderThanAsync(_runningMinutesThreshold);
+            _logger.LogInformation("ServiceRestart: Found {Count} long-running processes.", longRunningProcessIds.Count);
         }
         catch (Exception ex)
         {
@@ -108,7 +108,7 @@ public class ServiceRestartMonitorService : BackgroundService
             return;
         }
 
-        if (longRunningProcesses.Count == 0)
+        if (longRunningProcessIds.Count == 0)
         {
             _logger.LogInformation("ServiceRestart: No long-running processes found. No restart needed.");
             return;
@@ -146,23 +146,23 @@ public class ServiceRestartMonitorService : BackgroundService
         }
 
         // 3. Update dtx_process status for each long-running process
-        foreach (var process in longRunningProcesses)
+        foreach (var idProcess in longRunningProcessIds)
         {
             try
             {
                 string newStatus = restartSuccess ? "COMPLETED" : "NOTCOMPLETED";
-                _logger.LogInformation("ServiceRestart: Updating dtx_process record {IdProcess} to status {Status}.", process.IdProcess, newStatus);
-                await dtxProcessRepo.UpdateStatusAsync(process.IdProcess, newStatus, DateTime.UtcNow);
+                _logger.LogInformation("ServiceRestart: Updating dtx_process record {IdProcess} to status {Status}.", idProcess, newStatus);
+                await dtxProcessRepo.UpdateStatusAsync(idProcess, newStatus, DateTime.UtcNow);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "ServiceRestart: Failed to update dtx_process record {IdProcess}.", process.IdProcess);
+                _logger.LogError(ex, "ServiceRestart: Failed to update dtx_process record {IdProcess}.", idProcess);
             }
         }
 
         if (restartSuccess)
         {
-            _logger.LogInformation("ServiceRestart: Restart completed successfully. Updated {Count} process records.", longRunningProcesses.Count);
+            _logger.LogInformation("ServiceRestart: Restart completed successfully. Updated {Count} process records.", longRunningProcessIds.Count);
         }
         else
         {

@@ -498,18 +498,18 @@
         // ========================
         let currentCodigo = "";
         let currentIsDayBased = false;
-        let pollingIntervals = {};
+        let batchPollingInterval = null; // Single interval for batch polling all active executions
         let pollingState = {}; // Maps historyId -> { codEnvio, fechadatos } for restart after refresh
         let tableRefreshInProgress = false;
 
         // ========================
-        //  Stop all active polling intervals
+        //  Stop batch polling interval
         // ========================
         function stopAllPolling() {
-            Object.keys(pollingIntervals).forEach(key => {
-                clearInterval(pollingIntervals[key]);
-            });
-            pollingIntervals = {};
+            if (batchPollingInterval) {
+                clearInterval(batchPollingInterval);
+                batchPollingInterval = null;
+            }
         }
 
         // ========================
@@ -534,11 +534,11 @@
             // Set flag to block polling from firing concurrently
             tableRefreshInProgress = true;
 
-            // Save active polling state before clearing intervals
+            // Save active polling state before clearing interval
             // so we can restart polling for in-progress items after refresh
             const savedPollingState = { ...pollingState };
 
-            // Clear all existing polling intervals to prevent stale callbacks
+            // Clear existing batch polling interval to prevent stale callbacks
             // from interfering with the freshly rendered table DOM
             stopAllPolling();
 
@@ -552,19 +552,9 @@
                 renderResultsTable(data);
                 tableContainer.style.display = "block";
 
-                // Restart polling for items that were still in progress
-                for (const [historyId, state] of Object.entries(savedPollingState)) {
-                    try {
-                        const statusRes = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
-                        if (statusRes.ok) {
-                            const statusItem = await statusRes.json();
-                            if (statusItem.status === "PENDIENTE" || statusItem.status === "EN PROCESO") {
-                                startPolling(historyId, state.codEnvio, state.fechadatos);
-                            }
-                        }
-                    } catch {
-                        // If status check fails, skip restarting polling for this item
-                    }
+                // Restart batch polling if any items were still in progress
+                if (Object.keys(savedPollingState).length > 0) {
+                    startBatchPolling();
                 }
             } catch (error) {
                 errorMessage.textContent = `Error refrescando datos: ${error.message}`;
@@ -1016,8 +1006,9 @@
                 const data = await res.json();
                 showToast(`Comando encolado. HistoryId: ${data.historyId}`, "success");
 
-                // Start polling for status using HistoryId
-                startPolling(data.historyId, codEnvio, row.fechadatos);
+                // Register this historyId for batch polling and start the batch interval if not running
+                pollingState[data.historyId] = { codEnvio, fechadatos: row.fechadatos };
+                startBatchPolling();
 
             } catch (error) {
                 showToast(`Error: ${error.message}`, "error");
@@ -1025,64 +1016,79 @@
         }
 
         // ========================
-        //  Polling for ETLExecutionHistory status
+        //  Batch polling for all active ETLExecutionHistory records
+        //  Makes a single request per interval to reduce database load
         // ========================
-        function startPolling(historyId, codEnvio, fechadatos) {
-            if (pollingIntervals[historyId]) {
-                clearInterval(pollingIntervals[historyId]);
-            }
+        function startBatchPolling() {
+            if (batchPollingInterval) return; // Already running
 
-            // Store state so polling can be restarted after a manual refresh
-            pollingState[historyId] = { codEnvio, fechadatos };
-
-            const interval = setInterval(async () => {
+            batchPollingInterval = setInterval(async () => {
                 // Guard: skip this cycle if manual refresh is in progress
                 if (tableRefreshInProgress) return;
 
                 try {
-                    const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
+                    const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/active`);
 
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-                    const item = await res.json();
+                    const items = await res.json();
 
-                    // Determine tooltip content for terminal states
-                    let tooltipContent = "";
-                    if (item.status === "EXITOSO" && item.output) {
-                        tooltipContent = item.output;
-                    } else if (item.status === "FALLIDO" && item.error) {
-                        tooltipContent = item.error;
-                    }
+                    // Build a set of active historyIds from the response
+                    const activeHistoryIds = new Set(items.map(item => item.id));
 
-                    updateStatusBadge(codEnvio, item.status, tooltipContent);
-                    updateFechaCell(codEnvio, item.fechaDatos);
-                    updateTriggerType(codEnvio, item.triggerType);
+                    // Track which historyIds we were polling that are no longer active
+                    const previouslyPolledIds = new Set(Object.keys(pollingState));
 
-                    // Update action buttons if fechaDatos changed
-                    if (item.fechaDatos && item.fechaDatos !== fechadatos) {
-                        fechadatos = item.fechaDatos;
-                        pollingState[historyId] = { codEnvio, fechadatos };
-                        updateActionButtons(codEnvio, item.fechaDatos);
-                    }
+                    for (const item of items) {
+                        const codEnvio = item.codEnvio;
 
-                    // Stop polling when terminal status reached
-                    if (item.status === "EXITOSO" || item.status === "FALLIDO") {
-                        clearInterval(interval);
-                        delete pollingIntervals[historyId];
-                        delete pollingState[historyId];
+                        // Determine tooltip content for terminal states
+                        let tooltipContent = "";
+                        if (item.status === "EXITOSO" && item.output) {
+                            tooltipContent = item.output;
+                        } else if (item.status === "FALLIDO" && item.error) {
+                            tooltipContent = item.error;
+                        }
 
-                        if (item.status === "EXITOSO") {
-                            showToast("Ejecución completada con éxito.", "success");
-                        } else {
-                            showToast(`Ejecución fallida. Error: ${item.error || "Desconocido"}`, "error");
+                        updateStatusBadge(codEnvio, item.status, tooltipContent);
+                        updateFechaCell(codEnvio, item.fechaDatos);
+                        updateTriggerType(codEnvio, item.triggerType);
+
+                        // Update action buttons if fechaDatos changed
+                        const prevState = pollingState[item.id];
+                        if (prevState && item.fechaDatos && item.fechaDatos !== prevState.fechadatos) {
+                            pollingState[item.id] = { codEnvio, fechadatos: item.fechaDatos };
+                            updateActionButtons(codEnvio, item.fechaDatos);
+                        }
+
+                        // Stop polling for this historyId when terminal status reached
+                        if (item.status === "EXITOSO" || item.status === "FALLIDO") {
+                            delete pollingState[item.id];
+
+                            if (item.status === "EXITOSO") {
+                                showToast("Ejecución completada con éxito.", "success");
+                            } else {
+                                showToast(`Ejecución fallida. Error: ${item.error || "Desconocido"}`, "error");
+                            }
                         }
                     }
-                } catch (error) {
-                    console.error("Polling error:", error);
-                }
-            }, 3000);
 
-            pollingIntervals[historyId] = interval;
+                    // Clean up polling state for historyIds no longer in active response
+                    // (they may have been deleted or reached terminal state outside polling)
+                    for (const historyId of previouslyPolledIds) {
+                        if (!activeHistoryIds.has(historyId)) {
+                            delete pollingState[historyId];
+                        }
+                    }
+
+                    // Stop batch polling if no more items being tracked
+                    if (Object.keys(pollingState).length === 0) {
+                        stopAllPolling();
+                    }
+                } catch (error) {
+                    console.error("Batch polling error:", error);
+                }
+            }, 5000);
         }
 
         // ========================

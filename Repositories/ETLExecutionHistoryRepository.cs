@@ -120,6 +120,20 @@ public class ETLExecutionHistoryRepository
     }
 
     /// <summary>
+    /// Gets all active (PENDIENTE or EN PROCESO) ETLExecutionHistory records.
+    /// Used by the batch status polling endpoint to return all in-progress executions in a single query.
+    /// </summary>
+    public virtual async Task<List<ETLExecutionHistory>> GetAllActiveAsync()
+    {
+        _logger.LogDebug("Querying all active ETLExecutionHistory records from database.");
+        var result = await _context.ETLExecutionHistories
+            .Where(x => x.Status == "PENDIENTE" || x.Status == "EN PROCESO")
+            .ToListAsync();
+        _logger.LogDebug("Retrieved {Count} active ETLExecutionHistory records from database.", result.Count);
+        return result;
+    }
+
+    /// <summary>
     /// Gets the first active (PENDIENTE or EN PROCESO) execution for the given CodEnvio and Codigo, if any.
     /// </summary>
     public async Task<ETLExecutionHistory?> GetActiveExecutionAsync(string codEnvio, string codigo)

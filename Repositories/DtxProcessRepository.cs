@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
 
@@ -35,7 +36,7 @@ public class DtxProcessRepository
                     RETURNING id_process";
 
         var detailsValue = (object?)process.Details ?? DBNull.Value;
-        var id = await _context.Database.SqlQueryRaw<long>(
+        var id = _context.Database.SqlQueryRaw<long>(
             sql,
             process.AppName,
             process.ProcessName,
@@ -44,7 +45,7 @@ public class DtxProcessRepository
             process.Active,
             detailsValue,
             process.CreatedAt
-        ).FirstOrDefaultAsync();
+        ).AsEnumerable().FirstOrDefault();
 
         _logger.LogInformation("dtx_process record inserted with IdProcess {IdProcess}.", id);
         return id;
@@ -81,43 +82,38 @@ public class DtxProcessRepository
     }
 
     /// <summary>
-    /// Gets all process records with status 'RUNNING'.
-    /// Single query - no N+1 risk.
+    /// Checks whether any process records with status 'RUNNING' exist.
+    /// Uses EXISTS to stop at the first match instead of materializing all rows.
     /// </summary>
-    public virtual async Task<List<DtxProcess>> GetRunningProcessesAsync()
+    public virtual async Task<bool> AreRunningProcessesExistAsync()
     {
-        _logger.LogDebug("Querying dtx_process for RUNNING records.");
+        _logger.LogDebug("Checking if RUNNING records exist in dtx_process.");
 
-        var sql = @"SELECT id_process, app_name, process_name, status, start_time, end_time, active, details, created_at
-                    FROM dtx_process
-                    WHERE status = 'RUNNING'";
+        var sql = @"SELECT CASE WHEN EXISTS (SELECT 1 FROM dtx_process WHERE status = 'RUNNING') THEN 1 ELSE 0 END";
 
-        var results = await _context.Database.SqlQueryRaw<DtxProcess>(sql).ToListAsync();
+        var result = _context.Database.SqlQueryRaw<int>(sql).AsEnumerable().FirstOrDefault();
+        var exists = result == 1;
 
-        _logger.LogDebug("Found {Count} RUNNING records in dtx_process.", results.Count);
-        return results;
+        _logger.LogDebug("RUNNING records exist in dtx_process: {Exists}.", exists);
+        return exists;
     }
 
     /// <summary>
-    /// Gets all RUNNING process records whose start_time is older than the given threshold.
-    /// Single query - no N+1 risk.
+    /// Gets the IDs of all RUNNING process records whose start_time is older than the given threshold.
+    /// Only selects id_process to minimize data transfer.
     /// </summary>
-    public virtual async Task<List<DtxProcess>> GetRunningProcessesOlderThanAsync(TimeSpan threshold)
+    public virtual async Task<List<long>> GetRunningProcessIdsOlderThanAsync(TimeSpan threshold)
     {
         var cutoffTime = DateTime.UtcNow.Subtract(threshold);
-        _logger.LogDebug("Querying dtx_process for RUNNING records older than {Threshold} (cutoff: {Cutoff}).",
+        _logger.LogDebug("Querying dtx_process for RUNNING process IDs older than {Threshold} (cutoff: {Cutoff}).",
             threshold, cutoffTime);
 
-        var sql = @"SELECT id_process, app_name, process_name, status, start_time, end_time, active, details, created_at
-                    FROM dtx_process
+        var sql = @"SELECT id_process FROM dtx_process
                     WHERE status = 'RUNNING' AND start_time < {0}";
 
-        var results = await _context.Database.SqlQueryRaw<DtxProcess>(
-            sql,
-            cutoffTime
-        ).ToListAsync();
+        var results = _context.Database.SqlQueryRaw<long>(sql, cutoffTime).AsEnumerable().ToList();
 
-        _logger.LogDebug("Found {Count} RUNNING records older than threshold.", results.Count);
+        _logger.LogDebug("Found {Count} RUNNING process IDs older than threshold.", results.Count);
         return results;
     }
 }

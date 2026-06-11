@@ -39,8 +39,8 @@ public class EtlJobServiceTests : IDisposable
         var dtxProcessLoggerMock = new Mock<ILogger<DtxProcessRepository>>();
         _dtxProcessRepoMock = new Mock<DtxProcessRepository>(null!, dtxProcessLoggerMock.Object);
         _dtxProcessRepoMock
-            .Setup(r => r.GetRunningProcessesAsync())
-            .ReturnsAsync(new List<DtxProcess>());
+            .Setup(r => r.AreRunningProcessesExistAsync())
+            .ReturnsAsync(false);
 
         _serviceProviderMock = new Mock<IServiceProvider>();
         _scopeMock = new Mock<IServiceScope>();

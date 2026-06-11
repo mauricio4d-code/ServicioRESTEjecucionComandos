@@ -126,7 +126,7 @@ builder.Services.AddDbContext<ServiceDbContext>(options =>
         case "sqlserver":
             options.UseSqlServer(serviceConnectionString);
             break;
-        case "sqlite": // Added SQLite option for service database to allow full in-memory testing and simpler local development without needing PostgreSQL or SQL Server.
+        case "sqlite": // NO NOT ADD THIS TO README, this is only for testing and local development convenience, not intended for production use.
             options.UseSqlite(serviceConnectionString);
             break;
         default:

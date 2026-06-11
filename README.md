@@ -121,7 +121,7 @@ Configura la base de datos de servicio donde se almacenan las tablas `hist_etl_e
 
 | Clave | Descripción | Valores Válidos |
 |-------|-------------|-----------------|
-| `Provider` | Proveedor de base de datos para ServiceDb | `postgres`, `sqlserver`, `sqlite` |
+| `Provider` | Proveedor de base de datos para ServiceDb | `postgres`, `sqlserver` |
 
 ### Authentication
 

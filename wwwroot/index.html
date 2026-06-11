@@ -1074,9 +1074,43 @@
                     }
 
                     // Clean up polling state for historyIds no longer in active response
-                    // (they may have been deleted or reached terminal state outside polling)
+                    // (they may have reached terminal state between polling cycles)
+                    // Fetch individual status to update UI before removing from polling state
                     for (const historyId of previouslyPolledIds) {
                         if (!activeHistoryIds.has(historyId)) {
+                            try {
+                                const statusRes = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
+                                if (statusRes.ok) {
+                                    const finalItem = await statusRes.json();
+                                    const codEnvio = finalItem.codEnvio;
+
+                                    // Determine tooltip content for terminal states
+                                    let tooltipContent = "";
+                                    if (finalItem.status === "EXITOSO" && finalItem.output) {
+                                        tooltipContent = finalItem.output;
+                                    } else if (finalItem.status === "FALLIDO" && finalItem.error) {
+                                        tooltipContent = finalItem.error;
+                                    }
+
+                                    updateStatusBadge(codEnvio, finalItem.status, tooltipContent);
+                                    updateFechaCell(codEnvio, finalItem.fechaDatos);
+                                    updateTriggerType(codEnvio, finalItem.triggerType);
+
+                                    const prevState = pollingState[historyId];
+                                    if (prevState && finalItem.fechaDatos && finalItem.fechaDatos !== prevState.fechadatos) {
+                                        pollingState[historyId] = { codEnvio, fechadatos: finalItem.fechaDatos };
+                                        updateActionButtons(codEnvio, finalItem.fechaDatos);
+                                    }
+
+                                    if (finalItem.status === "EXITOSO") {
+                                        showToast("Ejecución completada con éxito.", "success");
+                                    } else if (finalItem.status === "FALLIDO") {
+                                        showToast(`Ejecución fallida. Error: ${finalItem.error || "Desconocido"}`, "error");
+                                    }
+                                }
+                            } catch (error) {
+                                console.error("Failed to fetch final status for", historyId, error);
+                            }
                             delete pollingState[historyId];
                         }
                     }

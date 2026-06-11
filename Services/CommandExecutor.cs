@@ -17,6 +17,10 @@ public class CommandExecutor
     private const string UnauthorizedErrorMessage = "Los permisos para ejecutar el ETL no son validos. Por favor actualize sus credenciales.";
     private const string NoApiKeyErrorMessage = "No se encontro la llave API en el request. Por favor revise la configuracion para el ETL.";
 
+    // Maximum length for output/error text stored in database
+    private const int MaxOutputLength = 500;
+    private const string TruncatedPrefix = "...[truncado] ";
+
     private readonly string _exePath;
     private readonly ILogger<CommandExecutor> _logger;
 
@@ -82,14 +86,20 @@ public class CommandExecutor
             var error = await errorTask;
             var exitCode = process.ExitCode;
 
+            // Truncate output/error from the beginning to keep the last messages
+            output = TruncateFromStart(output);
+            error = TruncateFromStart(error);
+
             // Check for specific error patterns in output/error streams
             if (output.Contains(UnauthorizedErrorPattern) || error.Contains(UnauthorizedErrorPattern))
             {
                 error = UnauthorizedErrorMessage;
+                exitCode = -1; // Set a non-zero exit code to indicate failure
             }
             else if (output.Contains(NoApiKeyErrorPattern) || error.Contains(NoApiKeyErrorPattern))
             {
                 error = NoApiKeyErrorMessage;
+                exitCode = -1; // Set a non-zero exit code to indicate failure
             }
 
             _logger.LogInformation("Command execution completed for item {ItemId}. ExitCode: {ExitCode}",
@@ -115,5 +125,21 @@ public class CommandExecutor
                 Error = ex.Message
             };
         }
+    }
+
+    /// <summary>
+    /// Truncates a string from the beginning, keeping the last <paramref name="maxLength"/> characters.
+    /// If the string exceeds the limit, a truncation marker is prepended.
+    /// </summary>
+    private string TruncateFromStart(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input ?? string.Empty;
+
+        if (input.Length <= MaxOutputLength)
+            return input;
+
+        var kept = input.Substring(input.Length - MaxOutputLength);
+        return TruncatedPrefix + kept;
     }
 }

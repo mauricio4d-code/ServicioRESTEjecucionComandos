@@ -204,4 +204,38 @@ public class CommandExecutorTests
         result1.Output.Should().Contain("First");
         result2.Output.Should().Contain("Second");
     }
+
+    [Fact]
+    public async Task ExecuteAsync_LargeOutput_ShouldTruncateFromStart()
+    {
+        // Arrange
+        var executor = new CommandExecutor(
+            "powershell.exe",
+            _loggerMock.Object);
+
+        // Generate a large output by repeating a string many times, ending with a unique marker
+        var largePayload = "A".PadLeft(5000, 'A');
+        var marker = "END_MARKER";
+        var item = new ExecutionQueueItem
+        {
+            Id = Guid.NewGuid(),
+            HistoryId = Guid.NewGuid(),
+            Params = $"-Command \"Write-Output '{largePayload}'; Write-Output '{marker}'\"",
+            Status = "PENDIENTE"
+        };
+
+        // Act
+        var result = await executor.ExecuteAsync(item);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Success.Should().BeTrue();
+        result.ExitCode.Should().Be(0);
+        // Output should contain the truncation prefix
+        result.Output.Should().Contain("[truncated]");
+        // Output should end with the marker (last messages are preserved)
+        result.Output.Should().Contain(marker);
+        // Total length should be within bounds (MaxOutputLength + prefix length)
+        result.Output.Length.Should().BeLessOrEqualTo(4000 + 15);
+    }
 }

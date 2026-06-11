@@ -9,6 +9,14 @@ namespace ServicioRESTEjecucionComandos.Services;
 /// </summary>
 public class CommandExecutor
 {
+    // Error pattern constants for string matching
+    private const string UnauthorizedErrorPattern = "error: Unauthorized";
+    private const string NoApiKeyErrorPattern = "error: No API key found in request";
+
+    // Localized error message constants
+    private const string UnauthorizedErrorMessage = "Los permisos para ejecutar el ETL no son validos. Por favor actualize sus credenciales.";
+    private const string NoApiKeyErrorMessage = "No se encontro la llave API en el request. Por favor revise la configuracion para el ETL.";
+
     private readonly string _exePath;
     private readonly ILogger<CommandExecutor> _logger;
 
@@ -73,6 +81,16 @@ public class CommandExecutor
             var output = await outputTask;
             var error = await errorTask;
             var exitCode = process.ExitCode;
+
+            // Check for specific error patterns in output/error streams
+            if (output.Contains(UnauthorizedErrorPattern) || error.Contains(UnauthorizedErrorPattern))
+            {
+                error = UnauthorizedErrorMessage;
+            }
+            else if (output.Contains(NoApiKeyErrorPattern) || error.Contains(NoApiKeyErrorPattern))
+            {
+                error = NoApiKeyErrorMessage;
+            }
 
             _logger.LogInformation("Command execution completed for item {ItemId}. ExitCode: {ExitCode}",
                 itemId, exitCode);

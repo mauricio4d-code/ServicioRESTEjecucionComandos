@@ -1,17 +1,17 @@
 # ServicioRESTEjecucionComandos
 
-Servicio REST desarrollado en C# con ASP.NET Core 8 que proporciona una interfaz web autenticada para ejecutar comandos de forma asíncrona mediante una cola de ejecución con procesamiento paralelo configurable.
+Servicio REST desarrollado en C# con ASP.NET Core 8 que proporciona una interfaz web autenticada para ejecutar comandos de forma asíncrona mediante Hangfire con procesamiento paralelo configurable.
 
-El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh tokens), validación contra una base de datos legacy, registro de auditoría, limpieza automática de tokens expirados, gestión de ejecuciones a través de la tabla `hist_etl_execution` en una base de datos de servicio (PostgreSQL o SQL Server), y programación de ejecuciones ETL recurrentes mediante Hangfire.
+El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh tokens), validación contra una base de datos legacy, registro de auditoría, limpieza automática de tokens expirados, gestión de ejecuciones a través de las tablas `hist_etl_execution` y `hist_etl_execution_scheduled` en una base de datos de servicio (PostgreSQL, SQL Server o SQLite), programación de ejecuciones ETL recurrentes mediante Hangfire, monitoreo de salud con health checks, y reinicio automático de servicios Windows.
 
 ---
 
 ## Requisitos
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (o superior)
-- Windows (para ejecución de aplicaciones de consola nativas)
+- Windows (para ejecución de aplicaciones de consola nativas y funcionalidad de Windows Service)
 - Base de datos legacy (SQLite, PostgreSQL o SQL Server) configurada con usuarios y roles
-- Base de datos de servicio (PostgreSQL o SQL Server) para la tabla `hist_etl_execution` y consultas a `base_datos`
+- Base de datos de servicio (PostgreSQL, SQL Server o SQLite) para las tablas `hist_etl_execution` y `hist_etl_execution_scheduled`
 
 ---
 
@@ -42,13 +42,23 @@ ServicioRESTEjecucionComandos/
 │   ├── QueryResult.cs                  # DTO para resultados de consulta de seguimiento
 │   ├── RefreshRequest.cs               # DTO para solicitud de refresco de token
 │   └── RefreshResponse.cs              # DTO para respuesta con nuevos tokens
+├── HealthChecks/
+│   ├── AuthDbHealthCheck.cs            # Health check para base de datos legacy
+│   ├── HangfireHealthCheck.cs          # Health check para Hangfire
+│   ├── ServiceDbHealthCheck.cs         # Health check para base de datos de servicio
+│   ├── SqliteDbHealthCheck.cs          # Health check para base de datos SQLite
+│   └── UptimeHealthCheck.cs            # Health check para uptime y memoria
+├── Hubs/
+│   └── EtlNotificationHub.cs           # Hub de SignalR para notificaciones en tiempo real
 ├── Interfaces/
 │   ├── IPasswordValidator.cs           # Interfaz para validación de contraseñas
 │   └── LegacyPasswordValidator.cs      # Implementación para BD legacy
 ├── Models/
 │   ├── AuthAuditLog.cs                 # Modelo de registro de auditoría
 │   ├── BaseDatos.cs                    # Modelo para tabla base_datos (lookup)
+│   ├── DtxProcess.cs                   # Modelo para tabla dtx_process (monitoreo de procesos)
 │   ├── ETLExecutionHistory.cs          # Modelo para historial de ejecuciones ETL
+│   ├── ETLExecutionHistoryScheduled.cs # Modelo para historial de ejecuciones programadas
 │   ├── EtlSchedule.cs                  # Modelo para programaciones ETL recurrentes
 │   ├── ExecutionQueueItem.cs           # Modelo para items de la cola
 │   ├── RefreshToken.cs                 # Modelo de token de refresco
@@ -56,19 +66,21 @@ ServicioRESTEjecucionComandos/
 │   └── UserRole.cs                     # Modelo de rol de usuario
 ├── Repositories/
 │   ├── AuthAuditLogRepository.cs       # Repositorio para registros de auditoría
+│   ├── DtxProcessRepository.cs         # Repositorio para consultas de dtx_process
 │   ├── ETLExecutionHistoryRepository.cs # Repositorio para CRUD de ETLExecutionHistory
+│   ├── ETLExecutionHistoryScheduledRepository.cs # Repositorio para historial programado
 │   ├── EtlScheduleRepository.cs        # Repositorio para CRUD de EtlSchedule
 │   └── RefreshTokenRepository.cs       # Repositorio para persistencia de refresh tokens
 ├── Services/
 │   ├── AuthService.cs                  # Orquestador de flujos de autenticación
 │   ├── CommandExecutor.cs              # Ejecuta la aplicación de consola
 │   ├── EtlJobService.cs                # Servicio central para ejecuciones ETL (Hangfire + CommandExecutor)
-│   ├── ExecutionQueue.cs               # Cola thread-safe para items
+│   ├── ExecutionNotifier.cs            # Notificador SignalR para actualizaciones en tiempo real
 │   ├── JwtService.cs                   # Generación de tokens JWT
-│   ├── QueuedExecutionService.cs       # Servicio de fondo que procesa la cola
 │   ├── RefreshTokenCleanupService.cs   # Limpieza automática de tokens expirados
 │   ├── RefreshTokenService.cs          # Generación y rotación de refresh tokens
-│   └── ScheduleSyncService.cs          # Sincroniza programaciones DB con Hangfire recurring jobs
+│   ├── ScheduleSyncService.cs          # Sincroniza programaciones DB con Hangfire recurring jobs
+│   └── ServiceRestartMonitorService.cs # Monitorea procesos y reinicia Windows Service
 └── wwwroot/
     ├── auth.js                         # Cliente JavaScript para autenticación
     ├── index.html                      # Interfaz web con selector de BD y tabla de resultados
@@ -98,22 +110,34 @@ Configura el comportamiento de la cola de ejecución:
 | Clave | Descripción | Valor por Defecto |
 |-------|-------------|-------------------|
 | `WaitSeconds` | Segundos de espera cuando la cola está vacía | `10` |
+| `ProcessCheckWaitSeconds` | Segundos de espera entre verificaciones de proceso | `10` |
 | `MaxParallelExecutions` | Máximo de comandos ejecutándose simultáneamente | `1` |
 | `DailyCodes` | Lista de códigos que usan lógica de fechas basada en días (no meses) | `[]` |
+| `ExcludedCodes` | Lista de códigos excluidos de la ejecución | `[]` |
 
 ### ServiceDb
 
-Configura la base de datos de servicio donde se almacena la tabla `hist_etl_execution`:
+Configura la base de datos de servicio donde se almacenan las tablas `hist_etl_execution` y `hist_etl_execution_scheduled`:
 
 | Clave | Descripción | Valores Válidos |
 |-------|-------------|-----------------|
-| `Provider` | Proveedor de base de datos para ServiceDb | `postgres`, `sqlserver` |
+| `Provider` | Proveedor de base de datos para ServiceDb | `postgres`, `sqlserver`, `sqlite` |
 
 ### Authentication
 
 | Clave | Descripción | Valores Válidos |
 |-------|-------------|-----------------|
 | `Provider` | Proveedor de base de datos legacy | `sqlite`, `postgres`, `sqlserver` |
+
+### ServiceRestart
+
+Configura el monitoreo y reinicio automático del servicio Windows:
+
+| Clave | Descripción | Valor por Defecto |
+|-------|-------------|-------------------|
+| `WindowsServiceName` | Nombre del servicio Windows a reiniciar | - |
+| `CheckIntervalMinutes` | Intervalo entre verificaciones de procesos | `5` |
+| `RunningMinutesThreshold` | Umbral de minutos para considerar un proceso como largo | `30` |
 
 ### ConnectionStrings
 
@@ -146,6 +170,12 @@ Configura la base de datos de servicio donde se almacena la tabla `hist_etl_exec
 |-------|-------------|-------------------|
 | `SyncIntervalSeconds` | Intervalo entre sincronizaciones de programaciones DB → Hangfire | `60` |
 
+### Kestrel
+
+| Clave | Descripción | Valor por Defecto |
+|-------|-------------|-------------------|
+| `Endpoints:Http:Url` | URL de enlace del servidor | `http://localhost:5000` |
+
 ---
 
 ## Ejecutar el Servicio y Ambientes de Ejecución
@@ -170,7 +200,7 @@ dotnet run --environment Production
 ```
 
 #### Windows CMD (Command Prompt)
-```CMD (Command Prompt)
+```cmd
 # Development
 set ASPNETCORE_ENVIRONMENT=Development
 dotnet run
@@ -194,12 +224,6 @@ Una vez iniciado el servicio, acceda a:
 http://localhost:5000
 ```
 
-o
-
-```
-http://localhost:5001
-```
-
 (El puerto exacto se mostrará en la consola al iniciar)
 
 ---
@@ -221,6 +245,20 @@ appsettings.json
 ```
 
 **Nota:** La sección `Serilog` de cada archivo de ambiente **sobrescribe completamente** la sección base. Cada archivo debe incluir la configuración completa de Serilog.
+
+### Modo Production
+
+Cuando `ASPNETCORE_ENVIRONMENT=Production`:
+
+- La base de datos SQLite se almacena en `%ProgramData%\ServicioRESTEjecucionComandos\`
+- Los archivos de log se almacenan en `%ProgramData%\ServicioRESTEjecucionComandos\Logs\`
+- Se habilita HSTS (HTTP Strict Transport Security)
+
+---
+
+## Windows Service (Modo Dual)
+
+El servicio puede ejecutarse como aplicación de consola o como servicio de Windows gracias a `builder.Host.UseWindowsService()`. En modo Production, el servicio puede instalarse como un servicio de Windows que se inicia automáticamente con el sistema.
 
 ---
 
@@ -255,7 +293,7 @@ Logs/
 
 ```
 2026-05-31 06:34:30.123 -04:00 [INF] Successful login for user: admin@example.com from IP 192.168.1.100
-2026-05-31 06:34:30.456 -04:00 [ERR] Error executing command for item 42
+2026-05-31 06:34:30.456 [ERR] Error executing command for item 42
    System.InvalidOperationException: Command failed
       at ServicioRESTEjecucionComandos.Services.CommandExecutor.ExecuteAsync()
 ```
@@ -352,7 +390,9 @@ Cierra sesión revocando el token de refresco.
 
 ### Protección de Endpoints
 
-Todos los endpoints de `/api/etlexecutor/*` y `/api/schedules/*` están protegidos con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized`.
+Todos los endpoints de `/api/etlexecutor/*` y `/api/schedules/*` están protegidos con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized` con una respuesta JSON personalizada.
+
+El endpoint `/api/schedules/*` requiere adicionalmente la política `AdminOnly`, que acepta los roles `"Administrador"` o `"Administador"` (con tolerancia a la falta de la 'r' final).
 
 ---
 
@@ -456,6 +496,16 @@ El servicio incluye un sistema de programación de ejecuciones ETL recurrentes b
 | [`ScheduleDbContext`](Data/ScheduleDbContext.cs) | DbContext para la tabla `etl_schedule` (SQLite) |
 | [`scheduler.html`](wwwroot/scheduler.html) | Interfaz web para gestionar programaciones |
 
+### Configuración de Hangfire
+
+| Opción | Valor |
+|---|---|
+| `WorkerCount` | `5` |
+| `Queues` | `["default"]` |
+| `ShutdownTimeout` | `1 minuto` |
+| Storage | InMemory (los jobs se pierden al reiniciar) |
+| Dashboard | No habilitado |
+
 ### Flujo de programación
 
 1. El usuario crea una programación a través de la interfaz [`scheduler.html`](wwwroot/scheduler.html) o la API `/api/schedules`
@@ -463,7 +513,7 @@ El servicio incluye un sistema de programación de ejecuciones ETL recurrentes b
 3. [`ScheduleSyncService`](Services/ScheduleSyncService.cs) detecta cambios periódicamente (cada `Hangfire:SyncIntervalSeconds`)
 4. Las programaciones activas se sincronizan como **recurring jobs** en Hangfire
 5. Hangfire ejecuta [`EtlJobService.ExecuteAsync()`](Services/EtlJobService.cs) según la expresión Cron
-6. Cada ejecución crea un registro `ETLExecutionHistory` con `TriggerType = "PROGRAMADO"`
+6. Cada ejecución crea un registro `ETLExecutionHistoryScheduled` con `TriggerType = "PROGRAMADO"`
 
 ### Endpoints de Programación
 
@@ -502,13 +552,82 @@ Activa o desactiva una programación sin eliminarla.
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `Id` | GUID | Identificador único |
-| `CodEnvio` | VARCHAR(100) | Código de envío de la entidad |
-| `TipoEntidad` | VARCHAR | Tipo de entidad |
-| `Codigo` | VARCHAR | Código de base de datos |
+| `Params` | TEXT | Parámetros serializados para la ejecución |
 | `CronExpression` | VARCHAR | Expresión Cron (ej: `0 2 * * *`) |
 | `IsActive` | BOOLEAN | Activa/desactivada |
 | `CreatedAt` | DATETIME | Fecha de creación |
 | `UpdatedAt` | DATETIME | Fecha de última actualización |
+
+---
+
+## Health Checks
+
+El servicio expone un endpoint de health checks en `/api/health` (sin autenticación) que reporta el estado de los siguientes componentes:
+
+| Health Check | Nombre | Tags | Descripción |
+|---|---|---|---|
+| [`AuthDbHealthCheck`](HealthChecks/AuthDbHealthCheck.cs) | `auth_database` | `database` | Verifica conectividad a la base de datos legacy |
+| [`ServiceDbHealthCheck`](HealthChecks/ServiceDbHealthCheck.cs) | `service_database` | `database` | Verifica conectividad a la base de datos de servicio |
+| [`SqliteDbHealthCheck`](HealthChecks/SqliteDbHealthCheck.cs) | `sqlite_database` | `database` | Verifica conectividad a la base de datos SQLite |
+| [`HangfireHealthCheck`](HealthChecks/HangfireHealthCheck.cs) | `hangfire` | `background-jobs` | Verifica que Hangfire esté operativo |
+| [`UptimeHealthCheck`](HealthChecks/UptimeHealthCheck.cs) | `uptime` | `system` | Reporta uptime y uso de memoria |
+
+**Respuesta de ejemplo:**
+```json
+{
+  "status": "Healthy",
+  "timestamp": "2026-06-11T08:00:00Z",
+  "components": {
+    "auth_database": {
+      "status": "Healthy",
+      "description": "Auth database connection OK",
+      "data": { "database": "AuthDatabase", "provider": "Microsoft.EntityFrameworkCore.Sqlite" }
+    },
+    "service_database": {
+      "status": "Healthy",
+      "description": "Service database connection OK",
+      "data": { "database": "ServiceDatabase", "provider": "Microsoft.EntityFrameworkCore.PostgreSQL" }
+    },
+    "sqlite_database": {
+      "status": "Healthy",
+      "description": "SQLite database connection OK",
+      "data": { "database": "RefreshTokenDatabase" }
+    },
+    "hangfire": {
+      "status": "Healthy",
+      "description": "Hangfire server is running",
+      "data": {}
+    },
+    "uptime": {
+      "status": "Healthy",
+      "description": "Service running for 01:23:45",
+      "data": { "uptime_seconds": 5025, "memory_mb": 45.2 }
+    }
+  }
+}
+```
+
+---
+
+## SignalR - Notificaciones en Tiempo Real
+
+El servicio utiliza **SignalR** para enviar notificaciones en tiempo real sobre el estado de las ejecuciones ETL programadas. El hub se encuentra en `/etlNotifications`.
+
+### Componentes
+
+| Componente | Descripción |
+|---|---|
+| [`EtlNotificationHub`](Hubs/EtlNotificationHub.cs) | Hub de SignalR en `/etlNotifications` |
+| [`ExecutionNotifier`](Services/ExecutionNotifier.cs) | Servicio singleton que.broadcasta eventos `TaskStarted` y `TaskCompleted` |
+
+### Eventos
+
+| Evento | Descripción |
+|---|---|
+| `TaskStarted` | Se dispara cuando comienza una ejecución programada |
+| `TaskCompleted` | Se dispara cuando finaliza una ejecución programada |
+
+Las interfaces web [`index.html`](wwwroot/index.html) y [`scheduler.html`](wwwroot/scheduler.html) se conectan automáticamente al hub para mostrar actualizaciones en tiempo real.
 
 ---
 
@@ -524,9 +643,9 @@ Activa o desactiva una programación sin eliminarla.
    - Se calculan las fechas `Start`/`End` según si el código es day-based o no:
      - **Day-based:** `Start` = día siguiente a `FechaDatos`, `End` = dos días después
      - **Month-based:** `Start` = primer día del mes siguiente a `FechaDatos`, `End` = último día de ese mes
-   - Se encola un `ExecutionQueueItem` vinculado al `HistoryId`
+   - Se encola un job en Hangfire a través de [`EtlJobService`](Services/EtlJobService.cs)
    - Se inicia polling automático del estado
-7. `QueuedExecutionService` descola el item y actualiza el estado a `EN PROCESO`
+7. Hangfire ejecuta [`EtlJobService.ExecuteAsync()`](Services/EtlJobService.cs) respetando el semáforo `MaxParallelExecutions`
 8. `CommandExecutor` ejecuta `Datax.SAFI.Downloader.exe` con los parámetros `-code`, `-start`, `-end`, `-codesend`
 9. Al finalizar, el estado se actualiza a `EXITOSO` (si `ExitCode == 0`) o `FALLIDO` (si `ExitCode != 0`)
 10. Los campos `Output`, `Error`, `ExitCode` y `CompletedAt` se actualizan en la tabla `hist_etl_execution`
@@ -554,11 +673,30 @@ La tabla `hist_etl_execution` se crea automáticamente al iniciar el servicio (s
 
 ---
 
+## Tabla `hist_etl_execution_scheduled`
+
+La tabla `hist_etl_execution_scheduled` se crea automáticamente al iniciar el servicio (si no existe). Almacena el historial de ejecuciones originadas por programaciones Hangfire:
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `Id` | GUID | Identificador único del registro |
+| `ScheduleId` | GUID | Identificador de la programación asociada |
+| `Params` | TEXT | Parámetros serializados de la ejecución |
+| `Status` | VARCHAR(20) | Estado actual: `PENDIENTE`, `EN PROCESO`, `EXITOSO`, `FALLIDO` |
+| `ExitCode` | INT (nullable) | Código de salida del comando ejecutado |
+| `Output` | TEXT (nullable) | Salida estándar del comando |
+| `Error` | TEXT (nullable) | Mensaje de error si la ejecución falló |
+| `ExecutedAt` | DATETIME (nullable) | Fecha/hora de inicio de ejecución |
+| `CompletedAt` | DATETIME (nullable) | Fecha/hora de finalización de ejecución |
+| `CreatedAt` | DATETIME | Fecha/hora de creación del registro |
+
+---
+
 ## Ejecución Paralela
 
 El servicio permite ejecutar múltiples comandos en paralelo. El número máximo de ejecuciones simultáneas se configura mediante `MaxParallelExecutions` en el archivo [`appsettings.json`](appsettings.json) (valor por defecto: 1).
 
-Este límite se implementa usando un `SemaphoreSlim` que garantiza que nunca haya más instancias de `CommandExecutor` ejecutándose al mismo tiempo que el número configurado.
+Este límite se implementa usando un `SemaphoreSlim` compartido en [`EtlJobService`](Services/EtlJobService.cs) que garantiza que nunca haya más instancias de `CommandExecutor` ejecutándose al mismo tiempo que el número configurado. Tanto las ejecuciones manuales como las programadas comparten el mismo semáforo.
 
 ---
 
@@ -570,6 +708,24 @@ Los códigos configurados en `QueueConfig:DailyCodes` usan una lógica de cálcu
 - **Month-based (default):** Las fechas `Start`/`End` se calculan como el rango completo del mes siguiente a `FechaDatos`
 
 El flag `IsDayBased` se incluye en la respuesta del endpoint `/api/etlexecutor/base-datos` para que la interfaz pueda determinar el comportamiento esperado.
+
+---
+
+## Códigos Excluidos
+
+Los códigos configurados en `QueueConfig:ExcludedCodes` son excluidos de la ejecución. Estos códigos no aparecerán en los resultados de consulta ni podrán ejecutarse a través de la interfaz o la API.
+
+---
+
+## Monitoreo y Reinicio de Servicio
+
+El servicio [`ServiceRestartMonitorService`](Services/ServiceRestartMonitorService.cs) se ejecuta en segundo plano y realiza las siguientes tareas periódicamente:
+
+- **Monitorea la tabla `dtx_process`:** Consulta los procesos en estado `RUNNING` que superan el umbral configurado `RunningMinutesThreshold`
+- **Reinicia el servicio Windows:** Cuando se detecta un proceso de larga duración, reinicia el servicio Windows configurado en `ServiceRestart:WindowsServiceName`
+- **Actualiza el estado del proceso:** Cambia el estado del proceso en la tabla `dtx_process` después del reinicio
+
+Esta funcionalidad es exclusiva de Windows. En otros sistemas operativos, el servicio registra una advertencia y omite las verificaciones.
 
 ---
 
@@ -598,22 +754,23 @@ Almacena usuarios y roles del sistema legacy. Soporta los siguientes proveedores
 
 ### Base de Datos SQLite (RefreshTokenDatabase)
 
-Almacena tokens de refresco, registros de auditoría y programaciones ETL. Se crea automáticamente en la raíz del proyecto si no existe.
+Almacena tokens de refresco, registros de auditoría y programaciones ETL. Se crea automáticamente en la raíz del proyecto si no existe. [`RefreshTokenDbContext`](Data/RefreshTokenDbContext.cs) y [`ScheduleDbContext`](Data/ScheduleDbContext.cs) comparten el mismo archivo SQLite.
 
-| Tabla | Descripción |
-|-------|-------------|
-| `RefreshTokens` | Tokens de refresco y estado de revocación |
-| `AuthAuditLogs` | Registros de auditoría de eventos de autenticación |
-| `etl_schedule` | Programaciones ETL recurrentes |
+| Tabla | Descripción | DbContext |
+|-------|-------------|-----------|
+| `RefreshTokens` | Tokens de refresco y estado de revocación | `RefreshTokenDbContext` |
+| `AuthAuditLogs` | Registros de auditoría de eventos de autenticación | `RefreshTokenDbContext` |
+| `etl_schedule` | Programaciones ETL recurrentes | `ScheduleDbContext` |
 
 ### Base de Datos de Servicio (ServiceDatabase)
 
-Almacena la tabla `hist_etl_execution` (creada automáticamente) y proporciona acceso a las tablas existentes `base_datos`, `dim_entidad_asfi` y `dtx_seguimiento`. Soporta los siguientes proveedores:
+Almacena las tablas `hist_etl_execution` y `hist_etl_execution_scheduled` (creadas automáticamente) y proporciona acceso a las tablas existentes `base_datos`, `dim_entidad_asfi`, `dtx_seguimiento` y `dtx_process`. Soporta los siguientes proveedores:
 
 | Proveedor | Paquete | Configuración |
 |-----------|---------|---------------|
 | PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `ServiceDb.Provider = "postgres"` |
 | SQL Server | `Microsoft.EntityFrameworkCore.SqlServer` | `ServiceDb.Provider = "sqlserver"` |
+| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `ServiceDb.Provider = "sqlite"` |
 
 ---
 
@@ -623,9 +780,44 @@ El servicio ejecuta los siguientes background services concurrentemente:
 
 | Servicio | Descripción |
 |----------|-------------|
-| [`QueuedExecutionService`](Services/QueuedExecutionService.cs) | Procesa la cola de ejecución de comandos |
 | [`RefreshTokenCleanupService`](Services/RefreshTokenCleanupService.cs) | Limpia tokens expirados y logs de auditoría antiguos |
 | [`ScheduleSyncService`](Services/ScheduleSyncService.cs) | Sincroniza programaciones DB con Hangfire recurring jobs |
+| [`ServiceRestartMonitorService`](Services/ServiceRestartMonitorService.cs) | Monitorea procesos largos y reinicia el servicio Windows |
+
+---
+
+## Pruebas
+
+El proyecto incluye dos proyectos de pruebas:
+
+### Unit Tests
+
+Ubicados en `ServicioRESTEjecucionComandos.UnitTests/`, utilizan **xUnit** con **Moq** para mocking y **FluentAssertions** para assertions.
+
+Cubren:
+- [`CommandExecutorTests`](ServicioRESTEjecucionComandos.UnitTests/Services/CommandExecutorTests.cs)
+- [`EtlJobServiceTests`](ServicioRESTEjecucionComandos.UnitTests/Services/EtlJobServiceTests.cs)
+- [`ExecutionNotifierTests`](ServicioRESTEjecucionComandos.UnitTests/Services/ExecutionNotifierTests.cs)
+- [`JwtServiceTests`](ServicioRESTEjecucionComandos.UnitTests/Services/JwtServiceTests.cs)
+- [`LegacyPasswordValidatorTests`](ServicioRESTEjecucionComandos.UnitTests/Services/LegacyPasswordValidatorTests.cs)
+- [`RefreshTokenServiceTests`](ServicioRESTEjecucionComandos.UnitTests/Services/RefreshTokenServiceTests.cs)
+- [`ETLExecutionHistoryRepositoryTests`](ServicioRESTEjecucionComandos.UnitTests/Repositories/ETLExecutionHistoryRepositoryTests.cs)
+- [`EtlScheduleRepositoryTests`](ServicioRESTEjecucionComandos.UnitTests/Repositories/EtlScheduleRepositoryTests.cs)
+
+### Integration Tests
+
+Ubicados en `ServicioRESTEjecucionComandos.IntegrationTests/`, utilizan **xUnit** con **Testcontainers** para PostgreSQL.
+
+Cubren:
+- [`AuthControllerIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/AuthControllerIntegrationTests.cs)
+- [`EtlExecutorControllerIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/EtlExecutorControllerIntegrationTests.cs)
+- [`SchedulesControllerIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/SchedulesControllerIntegrationTests.cs)
+
+### Ejecutar pruebas
+
+```bash
+dotnet test
+```
 
 ---
 
@@ -635,11 +827,17 @@ El servicio ejecuta los siguientes background services concurrentemente:
 - La clave secreta JWT (`Jwt:SecretKey`) debe tener al menos 32 caracteres
 - La base de datos legacy debe contener las tablas `user` y `userrole` con la estructura esperada
 - La base de datos de servicio debe contener la tabla `base_datos` con columnas `codigo` y `nombre`
-- La tabla `hist_etl_execution` se crea automáticamente al iniciar el servicio
+- Las tablas `hist_etl_execution` y `hist_etl_execution_scheduled` se crean automáticamente al iniciar el servicio
 - El servicio no incluye Swagger; solo la interfaz HTML está disponible
-- Los resultados de ejecución se almacenan en la tabla `hist_etl_execution` (no se escriben archivos en disco)
+- Los resultados de ejecución se almacenan en las tablas `hist_etl_execution` / `hist_etl_execution_scheduled` (no se escriben archivos en disco)
 - El estado del usuario se valida con la comparación `Userstate == "Activo"`
 - Cada evento de autenticación se registra en `ILogger` (→ Serilog → consola + archivo) y en el repositorio `AuthAuditLogRepository` (→ SQLite)
 - Los logs de Serilog se almacenan en la carpeta `Logs/` con rotación diaria
 - El ambiente de ejecución se controla con la variable `ASPNETCORE_ENVIRONMENT`
+- En Production, la base de datos SQLite y los logs se almacenan en `%ProgramData%\ServicioRESTEjecucionComandos\`
+- Hangfire usa almacenamiento en memoria; los jobs programados se pierden al reiniciar (se re-sincronizan mediante `ScheduleSyncService`)
+- No hay endpoint de dashboard de Hangfire habilitado
+- `AuthDbContext` es de solo lectura (base de datos legacy); no ejecutar migraciones EF contra él
+- `EtlJobService` y `CommandExecutor` son singletons que usan `IServiceScopeFactory` para acceso scoped a la base de datos
+- Los modelos `BaseDatos` y `DtxProcess` se ignoran con `modelBuilder.Ignore<T>()` y se consultan mediante SQL raw
 - Todos los comentarios y código fuente están en inglés, excepto este archivo de documentación

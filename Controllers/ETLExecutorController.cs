@@ -106,8 +106,8 @@ public class ETLExecutorController : ControllerBase
             _logger.LogInformation("[DB] Executing query-results SQL for codigo='{Codigo}' against dtx_seguimiento + hist_etl_execution.", codigo);
             var results = await _serviceDbContext.Database
                 .SqlQueryRaw<QueryResult>(
-                    @"WITH latest_exec AS (
-                        SELECT DISTINCT ON (""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"")
+                    @"WITH ranked_exec AS (
+                        SELECT
                             ""CodEnvio"",
                             ""TipoEntidad"",
                             ""FechaDatos"",
@@ -116,10 +116,24 @@ public class ETLExecutorController : ControllerBase
                             ""TriggerType"" AS trigger_type,
                             ""CompletedAt"" AS ultima_fecha_ejecucion,
                             ""Output"" AS ""output"",
-                            ""Error"" AS ""error""
+                            ""Error"" AS ""error"",
+                            ROW_NUMBER() OVER (PARTITION BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"" ORDER BY ""CompletedAt"" DESC) AS rn
                         FROM hist_etl_execution
                         WHERE ""Codigo"" = {0}
-                        ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"", ""CompletedAt"" DESC NULLS LAST
+                    ),
+                    latest_exec AS (
+                        SELECT
+                            ""CodEnvio"",
+                            ""TipoEntidad"",
+                            ""FechaDatos"",
+                            ""Codigo"",
+                            estado_ejecucion,
+                            trigger_type,
+                            ultima_fecha_ejecucion,
+                            ""output"",
+                            ""error""
+                        FROM ranked_exec
+                        WHERE rn = 1
                     ),
                     seguimiento AS (
                         SELECT
@@ -167,8 +181,21 @@ public class ETLExecutorController : ControllerBase
                         SELECT * FROM seguimiento
                         UNION ALL
                         SELECT * FROM ejecuciones_pendientes
+                    ),
+                    ranked_union AS (
+                        SELECT
+                            ""TipoEntidad"",
+                            ""CodEnvio"",
+                            ""FechaDatos"",
+                            ""EstadoEjecucion"",
+                            ""TriggerType"",
+                            ""UltimaFechaEjecucion"",
+                            ""Output"",
+                            ""Error"",
+                            ROW_NUMBER() OVER (PARTITION BY ""CodEnvio"" ORDER BY ""FechaDatos"" DESC) AS rn
+                        FROM union_data
                     )
-                    SELECT DISTINCT ON (""CodEnvio"")
+                    SELECT
                         ""TipoEntidad"",
                         ""CodEnvio"",
                         ""FechaDatos"",
@@ -177,8 +204,8 @@ public class ETLExecutorController : ControllerBase
                         ""UltimaFechaEjecucion"",
                         ""Output"",
                         ""Error""
-                    FROM union_data
-                    ORDER BY ""CodEnvio"", ""FechaDatos"" DESC",
+                    FROM ranked_union
+                    WHERE rn = 1",
                     codigo)
                 .ToListAsync();
 

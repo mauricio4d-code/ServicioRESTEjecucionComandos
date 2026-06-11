@@ -454,11 +454,17 @@ public class EtlJobService
             }
             else
             {
-                // ETL execution failed - report the failure immediately without checking dtx_seguimiento
-                _logger.LogWarning("ETL job {HistoryId} failed with exit code {ExitCode}. Skipping dtx_seguimiento verification.", historyId, result.ExitCode);
-                await historyRepo.UpdateStatusAsync(
+                // ETL execution failed - still verify dtx_seguimiento to populate FechaDatos
+                _logger.LogWarning("ETL job {HistoryId} failed with exit code {ExitCode}. Verifying dtx_seguimiento before marking as FALLIDO.", historyId, result.ExitCode);
+                var verificationResult = await historyRepo.VerifyDtxSeguimientoAsync(history.CodEnvio, history.Codigo);
+                var verificationFechaDatos = verificationResult?.FechaDatos;
+
+                _logger.LogInformation("[DB] Updating final status to FALLIDO for HistoryId {HistoryId} with FechaDatos={FechaDatos}.",
+                    historyId, verificationFechaDatos);
+                await historyRepo.UpdateStatusWithFechaDatosAsync(
                     historyId,
                     "FALLIDO",
+                    fechaDatos: verificationFechaDatos,
                     exitCode: result.ExitCode,
                     output: result.Output,
                     error: result.Error,

@@ -31,9 +31,15 @@ public class DtxProcessRepository
         _logger.LogInformation("Inserting new dtx_process record for AppName {AppName}, ProcessName {ProcessName}.",
             process.AppName, process.ProcessName);
 
-        var sql = @"INSERT INTO dtx_process (app_name, process_name, status, start_time, active, details, created_at)
-                    VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6})
-                    RETURNING id_process";
+        var isSqlServer = _context.Database.ProviderName?.ToLower() == "microsoft.entityframeworkcore.sqlserver";
+
+        var sql = isSqlServer
+            ? @"INSERT INTO dtx_process (app_name, process_name, status, start_time, active, details, created_at)
+                OUTPUT INSERTED.id_process
+                VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6})"
+            : @"INSERT INTO dtx_process (app_name, process_name, status, start_time, active, details, created_at)
+                VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6})
+                RETURNING id_process";
 
         var detailsValue = (object?)process.Details ?? DBNull.Value;
         var id = _context.Database.SqlQueryRaw<long>(

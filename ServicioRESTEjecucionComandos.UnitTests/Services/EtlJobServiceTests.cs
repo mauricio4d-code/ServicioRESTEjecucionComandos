@@ -280,10 +280,10 @@ public class EtlJobServiceTests : IDisposable
             "Should mark as FALLIDO when dtx verification period doesn't match");
     }
 
-    // --- ETL Failure: non-zero exit code - should skip dtx verification ---
+    // --- ETL Failure: non-zero exit code - should verify dtx_seguimiento and update with FechaDatos ---
 
     [Fact]
-    public async Task ExecuteJobByIdAsync_EtlFailsWithNonZeroExitCode_ShouldPreserveExitCodeAndError()
+    public async Task ExecuteJobByIdAsync_EtlFailsWithNonZeroExitCode_ShouldVerifyDtxAndUpdateWithFechaDatos()
     {
         // Arrange
         var historyId = Guid.NewGuid();
@@ -299,8 +299,20 @@ public class EtlJobServiceTests : IDisposable
         };
         SeedHistory(history);
 
+        // dtx_seguimiento verification still runs on failure
         _historyRepoMock
-            .Setup(r => r.UpdateStatusAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
+            .Setup(r => r.VerifyDtxSeguimientoAsync("ENV004", "COD004"))
+            .ReturnsAsync(new DtxSeguimientoVerificationResult
+            {
+                CodEnvio = "ENV004",
+                FechaDatos = new DateOnly(2024, 4, 10)
+            });
+
+        _historyRepoMock
+            .Setup(r => r.UpdateStatusWithFechaDatosAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateOnly?>(),
+                It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
             .Returns(Task.CompletedTask);
 
         _executorMock.Setup(e => e.ExecuteAsync(It.IsAny<ExecutionQueueItem>()))
@@ -317,24 +329,26 @@ public class EtlJobServiceTests : IDisposable
         // Act
         await service.ExecuteJobByIdAsync(historyId, "MANUAL");
 
-        // Assert - should mark as FALLIDO with original error, no dtx verification
+        // Assert - should call VerifyDtxSeguimientoAsync
         _historyRepoMock.Verify(
-            r => r.UpdateStatusAsync(
-                historyId, "FALLIDO", 1, "Partial output", "Connection refused",
+            r => r.VerifyDtxSeguimientoAsync("ENV004", "COD004"),
+            Times.Once,
+            "Should call dtx verification when ETL fails");
+
+        // Assert - should mark as FALLIDO with FechaDatos from verification
+        _historyRepoMock.Verify(
+            r => r.UpdateStatusWithFechaDatosAsync(
+                historyId, "FALLIDO", new DateOnly(2024, 4, 10),
+                1, "Partial output", "Connection refused",
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
-            "Should mark as FALLIDO with original exit code and error");
-
-        _historyRepoMock.Verify(
-            r => r.VerifyDtxSeguimientoAsync(It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never,
-            "Should NOT call dtx verification when ETL fails");
+            "Should mark as FALLIDO with FechaDatos from dtx verification");
     }
 
-    // --- ETL Failure: general failure - should skip dtx verification ---
+    // --- ETL Failure: dtx_seguimiento returns null - should still update with null FechaDatos ---
 
     [Fact]
-    public async Task ExecuteJobByIdAsync_EtlFails_ShouldSkipDtxVerification_AndMarkFallido()
+    public async Task ExecuteJobByIdAsync_EtlFails_AndDtxVerificationReturnsNull_ShouldMarkFallidoWithNullFechaDatos()
     {
         // Arrange
         var historyId = Guid.NewGuid();
@@ -350,8 +364,16 @@ public class EtlJobServiceTests : IDisposable
         };
         SeedHistory(history);
 
+        // dtx_seguimiento returns null (no record found)
         _historyRepoMock
-            .Setup(r => r.UpdateStatusAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
+            .Setup(r => r.VerifyDtxSeguimientoAsync("ENV005", "COD005"))
+            .ReturnsAsync((DtxSeguimientoVerificationResult?)null);
+
+        _historyRepoMock
+            .Setup(r => r.UpdateStatusWithFechaDatosAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateOnly?>(),
+                It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
             .Returns(Task.CompletedTask);
 
         _executorMock.Setup(e => e.ExecuteAsync(It.IsAny<ExecutionQueueItem>()))
@@ -368,18 +390,20 @@ public class EtlJobServiceTests : IDisposable
         // Act
         await service.ExecuteJobByIdAsync(historyId, "MANUAL");
 
-        // Assert - should mark as FALLIDO
+        // Assert - should call VerifyDtxSeguimientoAsync
         _historyRepoMock.Verify(
-            r => r.UpdateStatusAsync(
-                historyId, "FALLIDO", 3, string.Empty, "Timeout waiting for data",
+            r => r.VerifyDtxSeguimientoAsync("ENV005", "COD005"),
+            Times.Once,
+            "Should call dtx verification when ETL fails");
+
+        // Assert - should mark as FALLIDO with null FechaDatos
+        _historyRepoMock.Verify(
+            r => r.UpdateStatusWithFechaDatosAsync(
+                historyId, "FALLIDO", It.Is<DateOnly?>(d => !d.HasValue),
+                3, string.Empty, "Timeout waiting for data",
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
-            "Should mark as FALLIDO with correct exit code and error");
-
-        _historyRepoMock.Verify(
-            r => r.VerifyDtxSeguimientoAsync(It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never,
-            "Should NOT call dtx verification when ETL fails");
+            "Should mark as FALLIDO with null FechaDatos when dtx verification returns null");
     }
 
     // --- ETL throws exception ---
@@ -521,7 +545,7 @@ public class EtlJobServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteJobByIdAsync_DailyCode_EtlFails_ShouldSkipVerification()
+    public async Task ExecuteJobByIdAsync_DailyCode_EtlFails_ShouldVerifyDtxAndUpdateWithFechaDatos()
     {
         // Arrange
         var historyId = Guid.NewGuid();
@@ -537,8 +561,20 @@ public class EtlJobServiceTests : IDisposable
         };
         SeedHistory(history);
 
+        // dtx_seguimiento verification still runs on failure for daily codes too
         _historyRepoMock
-            .Setup(r => r.UpdateStatusAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
+            .Setup(r => r.VerifyDtxSeguimientoAsync("ENV001", "DAILY001"))
+            .ReturnsAsync(new DtxSeguimientoVerificationResult
+            {
+                CodEnvio = "ENV001",
+                FechaDatos = new DateOnly(2024, 3, 14)
+            });
+
+        _historyRepoMock
+            .Setup(r => r.UpdateStatusWithFechaDatosAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateOnly?>(),
+                It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
             .Returns(Task.CompletedTask);
 
         _executorMock.Setup(e => e.ExecuteAsync(It.IsAny<ExecutionQueueItem>()))
@@ -555,17 +591,84 @@ public class EtlJobServiceTests : IDisposable
         // Act
         await service.ExecuteJobByIdAsync(historyId, "MANUAL");
 
-        // Assert
+        // Assert - should call VerifyDtxSeguimientoAsync
         _historyRepoMock.Verify(
-            r => r.UpdateStatusAsync(
-                historyId, "FALLIDO", 3, string.Empty, "Timeout waiting for data",
+            r => r.VerifyDtxSeguimientoAsync("ENV001", "DAILY001"),
+            Times.Once,
+            "Should call dtx verification when ETL fails for daily code");
+
+        // Assert - should mark as FALLIDO with FechaDatos from verification
+        _historyRepoMock.Verify(
+            r => r.UpdateStatusWithFechaDatosAsync(
+                historyId, "FALLIDO", new DateOnly(2024, 3, 14),
+                3, string.Empty, "Timeout waiting for data",
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
-            "Should mark as FALLIDO with correct exit code and error");
+            "Should mark as FALLIDO with FechaDatos from dtx verification for daily code");
+    }
 
+    // --- ETL Failure with specific FechaDatos value verification ---
+
+    [Fact]
+    public async Task ExecuteJobByIdAsync_EtlFails_ShouldSetFechaDatosToLastDtxSeguimientoRecord()
+    {
+        // Arrange
+        var historyId = Guid.NewGuid();
+        var history = new ETLExecutionHistory
+        {
+            Id = historyId,
+            CodEnvio = "ENV010",
+            Codigo = "COD010",
+            TipoEntidad = "ENTIDAD10",
+            FechaDatos = new DateOnly(2024, 7, 1),
+            Status = "PENDIENTE",
+            TriggerType = "MANUAL"
+        };
+        SeedHistory(history);
+
+        // dtx_seguimiento returns a specific FechaDatos
+        var expectedFechaDatos = new DateOnly(2024, 7, 25);
+        _historyRepoMock
+            .Setup(r => r.VerifyDtxSeguimientoAsync("ENV010", "COD010"))
+            .ReturnsAsync(new DtxSeguimientoVerificationResult
+            {
+                CodEnvio = "ENV010",
+                FechaDatos = expectedFechaDatos
+            });
+
+        _historyRepoMock
+            .Setup(r => r.UpdateStatusWithFechaDatosAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateOnly?>(),
+                It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
+            .Returns(Task.CompletedTask);
+
+        _executorMock.Setup(e => e.ExecuteAsync(It.IsAny<ExecutionQueueItem>()))
+            .ReturnsAsync(new CommandExecutor.ExecutionResult
+            {
+                Success = false,
+                ExitCode = 2,
+                Output = "Some partial work done",
+                Error = "Data source unavailable"
+            });
+
+        var service = CreateService();
+
+        // Act
+        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+
+        // Assert - FechaDatos must match the last dtx_seguimiento record for same cod_envio + codigo
         _historyRepoMock.Verify(
-            r => r.VerifyDtxSeguimientoAsync(It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never,
-            "Should NOT call dtx verification when ETL fails for daily code");
+            r => r.UpdateStatusWithFechaDatosAsync(
+                historyId,
+                "FALLIDO",
+                expectedFechaDatos,  // This is the critical assertion
+                2,
+                "Some partial work done",
+                "Data source unavailable",
+                It.IsAny<DateTime?>(),
+                It.IsAny<DateTime?>()),
+            Times.Once,
+            "Should set FechaDatos to the last dtx_seguimiento record when ETL fails");
     }
 }

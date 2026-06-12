@@ -206,21 +206,19 @@ public class CommandExecutorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_LargeOutput_ShouldTruncateFromStart()
+    public async Task ExecuteAsync_MultiLineOutput_ShouldReturnOnlyLastLine()
     {
         // Arrange
         var executor = new CommandExecutor(
             "powershell.exe",
             _loggerMock.Object);
 
-        // Generate a large output by repeating a string many times, ending with a unique marker
-        var largePayload = "A".PadLeft(5000, 'A');
         var marker = "END_MARKER";
         var item = new ExecutionQueueItem
         {
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
-            Params = $"-Command \"Write-Output '{largePayload}'; Write-Output '{marker}'\"",
+            Params = $"-Command \"Write-Output 'Line1'; Write-Output 'Line2'; Write-Output '{marker}'\"",
             Status = "PENDIENTE"
         };
 
@@ -231,11 +229,63 @@ public class CommandExecutorTests
         result.Should().NotBeNull();
         result.Success.Should().BeTrue();
         result.ExitCode.Should().Be(0);
-        // Output should contain the truncation prefix
-        result.Output.Should().Contain("[truncado]");
-        // Output should end with the marker (last messages are preserved)
-        result.Output.Should().Contain(marker);
-        // Total length should be within bounds (MaxOutputLength + prefix length)
-        result.Output.Length.Should().BeLessOrEqualTo(500 + 15);
+        // Output should be exactly the last line
+        result.Output.Should().Be(marker);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OutputContainsGenericErrorPattern_ShouldReturnGenericErrorMessage()
+    {
+        // Arrange
+        var executor = new CommandExecutor(
+            "powershell.exe",
+            _loggerMock.Object);
+
+        // Output contains "error:" but not the specific patterns (Unauthorized / No API key)
+        var item = new ExecutionQueueItem
+        {
+            Id = Guid.NewGuid(),
+            HistoryId = Guid.NewGuid(),
+            Params = "-Command \"Write-Output 'error: Something unexpected happened'\"",
+            Status = "PENDIENTE"
+        };
+
+        // Act
+        var result = await executor.ExecuteAsync(item);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Success.Should().BeFalse();
+        result.ExitCode.Should().Be(-1);
+        result.Error.Should().Be("Ocurrio un error durante la ejecucion del ETL.");
+        result.Output.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ErrorStreamContainsGenericErrorPattern_ShouldReturnGenericErrorMessage()
+    {
+        // Arrange
+        var executor = new CommandExecutor(
+            "powershell.exe",
+            _loggerMock.Object);
+
+        // Write to stderr using Write-Warning (redirected to stderr)
+        var item = new ExecutionQueueItem
+        {
+            Id = Guid.NewGuid(),
+            HistoryId = Guid.NewGuid(),
+            Params = "-Command \"Write-Warning 'error: Database connection failed'\"",
+            Status = "PENDIENTE"
+        };
+
+        // Act
+        var result = await executor.ExecuteAsync(item);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Success.Should().BeFalse();
+        result.ExitCode.Should().Be(-1);
+        result.Error.Should().Be("Ocurrio un error durante la ejecucion del ETL.");
+        result.Output.Should().BeEmpty();
     }
 }

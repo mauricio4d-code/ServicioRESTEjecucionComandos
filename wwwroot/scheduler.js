@@ -485,4 +485,5 @@ document.addEventListener("keydown", function (e) {
 
     await loadSchedules();
     scheduleAutoRefresh();
+    renderFooter();
 })();

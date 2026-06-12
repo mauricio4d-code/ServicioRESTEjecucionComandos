@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
-    <title>Ejecucion de ETLs - Datax SAFI</title>
+    <title>Modulo de Gestion de ETLs - Datax SAFI</title>
     <style>
         * {
             margin: 0;
@@ -27,7 +27,7 @@
             background-color: #ffffff;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 40px;
+            padding: 40px 40px 40px 50px;
             text-align: center;
             max-width: 1200px;
             width: 100%;
@@ -122,7 +122,7 @@
 
         /* Select dropdown */
         .select-container {
-            margin-bottom: 20px;
+            margin-bottom: 10px;
         }
 
         .select-container label {
@@ -143,7 +143,6 @@
 
         /* Data table */
         .table-container {
-            margin-top: 20px;
             overflow-x: auto;
         }
 
@@ -169,10 +168,89 @@
             background-color: #f5f5f5;
         }
 
+        /* Center the "Acciones" column with fixed width */
+        th.center-header, td:nth-child(4) {
+            text-align: center !important;
+            width: 450px;
+            min-width: 382px;
+            max-width: 382px;
+        }
+
+        /* Separator column - empty gap between the two table groups */
+        td.separator, th.separator {
+            border: none !important;
+            width: 30px;
+            min-width: 30px;
+            max-width: 30px;
+            padding: 0;
+            background: white;
+        }
+
+        /* Top border on all column headers in both groups */
+        th:nth-child(1), th:nth-child(2), th:nth-child(3), th:nth-child(4),
+        th:nth-child(6), th:nth-child(7) {
+            border-top: 2px solid #e0e0e0;
+        }
+
+        /* Borders for left table group (columns 1-4) */
+        td:nth-child(1), th:nth-child(1) {
+            border-left: 2px solid #e0e0e0;
+        }
+
+        td:nth-child(4), th:nth-child(4) {
+            border-right: 2px solid #e0e0e0;
+        }
+
+        /* Borders for right table group (columns 6-7) */
+        td:nth-child(6), th:nth-child(6) {
+            border-left: 2px solid #e0e0e0;
+        }
+
+        /* Right border on last column (Tipo de Ejecución) */
+        td:nth-child(7), th:nth-child(7) {
+            border-right: 2px solid #e0e0e0;
+        }
+
+        /* Subtle background tint for status columns (Estado + Tipo de Ejecución) */
+        td:nth-child(6), td:nth-child(7),
+        th:nth-child(6), th:nth-child(7) {
+            background-color: #f8f9fa;
+        }
+
+        /* Override row hover for status columns to maintain tint */
+        tr:hover td:nth-child(6), tr:hover td:nth-child(7) {
+            background-color: #f0f1f3;
+        }
+
+        /* Center status column content */
+        td:nth-child(6) {
+            text-align: center;
+        }
+
+        /* Center "Fecha", "Estado" and "Tipo de Ejecución" headers */
+        th:nth-child(3), th:nth-child(6), th:nth-child(7) {
+            text-align: center;
+        }
+
+        /* Center "Fecha" and "Tipo de Ejecución" column content */
+        td:nth-child(3), td:nth-child(7) {
+            text-align: center;
+        }
+
+        /* Bottom border on last row for both table groups */
+        tr:last-child td:nth-child(1),
+        tr:last-child td:nth-child(2),
+        tr:last-child td:nth-child(3),
+        tr:last-child td:nth-child(4),
+        tr:last-child td:nth-child(6),
+        tr:last-child td:nth-child(7) {
+            border-bottom: 2px solid #e0e0e0;
+        }
+
         /* Action buttons */
         .action-buttons {
             display: grid;
-            grid-template-columns: 160px 160px;
+            grid-template-columns: 175px 175px;
             gap: 8px;
         }
 
@@ -207,14 +285,18 @@
             cursor: not-allowed;
         }
 
-        /* Row dimming for active executions */
-        tr.row-active-execution {
+        /* Row highlighting for active executions - apply per-cell to preserve borders */
+        tr.row-active-execution td {
             background-color: #fff3cd !important;
-            opacity: 0.75;
         }
 
-        tr.row-active-execution:hover {
+        tr.row-active-execution:hover td {
             background-color: #ffeaa7 !important;
+        }
+
+        /* Preserve separator column background on active rows */
+        tr.row-active-execution td.separator {
+            background: white !important;
         }
 
         /* Disabled button tooltip hint */
@@ -315,7 +397,6 @@
 
         /* Error message */
         .error-message {
-            margin-top: 10px;
             font-size: 13px;
             color: #d32f2f;
             min-height: 20px;
@@ -418,18 +499,27 @@
 
         /* Toolbar row for refresh button */
         .toolbar-row {
-            display: flex;
-            justify-content: flex-end;
-            margin-bottom: 16px;
-        }
-    </style>
+                    display: flex;
+                    justify-content: flex-end;
+                    margin-bottom: 16px;
+                }
+        
+                /* Footer */
+                .footer {
+                    text-align: center;
+                    padding: 24px 20px;
+                    color: #999999;
+                    font-size: 15px;
+                    margin-top: 40px;
+                }
+            </style>
 </head>
 
 <body>
     <button class="logout-btn" onclick="logoutAndRedirect()">Cerrar Sesión</button>
 
     <div class="container">
-        <h1>Ejecucion de ETLs</h1>
+        <h1>Módulo de Gestión de ETLs</h1>
 
         <!-- Navigation -->
         <div class="nav-bar">
@@ -475,9 +565,10 @@
                             <th>Tipo Entidad</th>
                             <th>Cod Envio</th>
                             <th>Fecha</th>
-                            <th>Estado</th>
-                            <th>Tipo de Ejecución</th>
-                            <th>Acciones</th>
+                            <th class="center-header">Acciones</th>
+                            <th class="separator"></th>
+                            <th class="status-section">Estado</th>
+                            <th class="status-section">Tipo de Ejecución</th>
                         </tr>
                     </thead>
                     <tbody id="resultsBody">
@@ -849,7 +940,7 @@
             tbody.innerHTML = "";
 
             if (!results || results.length === 0) {
-                tbody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>Sin resultados</td></tr>";
+                tbody.innerHTML = "<tr><td colspan='7' style='text-align:center;'>Sin resultados</td></tr>";
                 return;
             }
 
@@ -872,7 +963,54 @@
                 fechadatos.textContent = row.fechadatos ? formatDateYYYYMMDD(row.fechadatos) : "-";
                 tr.appendChild(fechadatos);
 
-                // Status cell - show execution status from query results
+                // Actions cell (position 4 - before status columns)
+                const actionsCell = document.createElement("td");
+                const actionWrapper = document.createElement("div");
+                actionWrapper.className = "action-buttons";
+
+                const canActualizar = currentIsDayBased
+                    ? isCurrentDateGreaterThanFecha(row.fechadatos)
+                    : isCurrentYearMonthGreaterThanFecha(row.fechadatos);
+
+                if (canActualizar) {
+                    const actualizarBtn = document.createElement("button");
+                    actualizarBtn.className = "btn btn-actualizar";
+                    actualizarBtn.textContent = currentIsDayBased
+                        ? getActualizarLabelDayBased(row.fechadatos)
+                        : getActualizarLabel(row.fechadatos);
+                    actualizarBtn.onclick = () => executeAction("Actualizar", row);
+                    if (isActiveExecution) {
+                        actualizarBtn.disabled = true;
+                        actualizarBtn.title = row.estadoEjecucion === "PENDIENTE"
+                            ? "Ejecución pendiente. Espere a que concluya."
+                            : "Ejecución en proceso. Espere a que concluya.";
+                    }
+                    actionWrapper.appendChild(actualizarBtn);
+                }
+
+                const repDocBtn = document.createElement("button");
+                repDocBtn.className = "btn btn-reprocesar";
+                repDocBtn.textContent = currentIsDayBased
+                    ? getReprocesarLabelDayBased(row.fechadatos)
+                    : getReprocesarLabel(row.fechadatos);
+                repDocBtn.onclick = () => executeAction("Reprocesar", row);
+                if (isActiveExecution) {
+                    repDocBtn.disabled = true;
+                    repDocBtn.title = row.estadoEjecucion === "PENDIENTE"
+                        ? "Ejecución pendiente. Espere a que concluya."
+                        : "Ejecución en proceso. Espere a que concluya.";
+                }
+                actionWrapper.appendChild(repDocBtn);
+
+                actionsCell.appendChild(actionWrapper);
+                tr.appendChild(actionsCell);
+
+                // Separator column - empty gap between data and status sections
+                const separatorCell = document.createElement("td");
+                separatorCell.className = "separator";
+                tr.appendChild(separatorCell);
+
+                // Status cell - show execution status from query results (position 6 - status section)
                 const statusCell = document.createElement("td");
                 const statusSpan = document.createElement("span");
                 statusSpan.id = `status-${row.codEnvio}`;
@@ -922,53 +1060,11 @@
                 statusCell.appendChild(statusSpan);
                 tr.appendChild(statusCell);
 
-                // TriggerType cell
+                // TriggerType cell (position 6 - status section)
                 const triggerTypeCell = document.createElement("td");
                 triggerTypeCell.id = `triggerType-${row.codEnvio}`;
                 triggerTypeCell.textContent = row.triggerType || "-";
                 tr.appendChild(triggerTypeCell);
-
-                // Actions cell
-                const actionsCell = document.createElement("td");
-                const actionWrapper = document.createElement("div");
-                actionWrapper.className = "action-buttons";
-
-                const canActualizar = currentIsDayBased
-                    ? isCurrentDateGreaterThanFecha(row.fechadatos)
-                    : isCurrentYearMonthGreaterThanFecha(row.fechadatos);
-
-                if (canActualizar) {
-                    const actualizarBtn = document.createElement("button");
-                    actualizarBtn.className = "btn btn-actualizar";
-                    actualizarBtn.textContent = currentIsDayBased
-                        ? getActualizarLabelDayBased(row.fechadatos)
-                        : getActualizarLabel(row.fechadatos);
-                    actualizarBtn.onclick = () => executeAction("Actualizar", row);
-                    if (isActiveExecution) {
-                        actualizarBtn.disabled = true;
-                        actualizarBtn.title = row.estadoEjecucion === "PENDIENTE"
-                            ? "Ejecución pendiente. Espere a que concluya."
-                            : "Ejecución en proceso. Espere a que concluya.";
-                    }
-                    actionWrapper.appendChild(actualizarBtn);
-                }
-
-                const repDocBtn = document.createElement("button");
-                repDocBtn.className = "btn btn-reprocesar";
-                repDocBtn.textContent = currentIsDayBased
-                    ? getReprocesarLabelDayBased(row.fechadatos)
-                    : getReprocesarLabel(row.fechadatos);
-                repDocBtn.onclick = () => executeAction("Reprocesar", row);
-                if (isActiveExecution) {
-                    repDocBtn.disabled = true;
-                    repDocBtn.title = row.estadoEjecucion === "PENDIENTE"
-                        ? "Ejecución pendiente. Espere a que concluya."
-                        : "Ejecución en proceso. Espere a que concluya.";
-                }
-                actionWrapper.appendChild(repDocBtn);
-
-                actionsCell.appendChild(actionWrapper);
-                tr.appendChild(actionsCell);
 
                 // Apply visual indicator for active executions
                 if (isActiveExecution) {
@@ -1365,6 +1461,7 @@
                 loadBaseDatos();
                 // Schedule auto-refresh for while page is open
                 scheduleAutoRefresh();
+                renderFooter();
             } else {
                 clearTokens();
                 window.location.href = "login.html";

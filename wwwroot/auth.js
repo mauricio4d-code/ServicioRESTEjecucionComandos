@@ -279,3 +279,29 @@ async function authenticatedFetch(url, options = {}) {
 
     return response;
 }
+
+// ========================
+//  Shared Footer Renderer
+// ========================
+
+/**
+ * Renders a shared footer element at the bottom of the page.
+ * Call this after authentication to display the copyright footer.
+ */
+function renderFooter() {
+    const existing = document.getElementById("sharedFooter");
+    if (existing) return; // Prevent duplicate rendering
+
+    const footer = document.createElement("footer");
+    footer.id = "sharedFooter";
+    footer.className = "footer";
+    const currentYear = new Date().getFullYear();
+    footer.textContent = `Copyright © DATAX Inc. ${currentYear} - Bolivia`;
+
+    const container = document.querySelector(".container");
+    if (container) {
+        container.appendChild(footer);
+    } else {
+        document.body.appendChild(footer);
+    }
+}

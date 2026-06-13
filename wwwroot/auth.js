@@ -296,7 +296,7 @@ function renderFooter() {
     footer.id = "sharedFooter";
     footer.className = "footer";
     const currentYear = new Date().getFullYear();
-    footer.textContent = `Copyright © DATAX Inc. ${currentYear} - Bolivia`;
+    footer.textContent = `© Analyze 2.0 - DATAX Bolivia ${currentYear} - Todos los derechos reservados.`;
 
     const container = document.querySelector(".container");
     if (container) {

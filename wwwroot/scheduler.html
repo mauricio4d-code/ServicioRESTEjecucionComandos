@@ -201,18 +201,27 @@
     <script src="auth.js"></script>
     <script src="scheduler.js"></script>
     <script>
+        let signalRConnection = null;
+
         function connectToNotificationHub() {
-            const connection = new signalR.HubConnectionBuilder()
-                .withUrl("/etlNotifications")
+            // Stop existing connection before creating a new one to avoid leaks
+            if (signalRConnection) {
+                signalRConnection.stop().catch(err => console.error("Error stopping SignalR connection:", err));
+            }
+
+            signalRConnection = new signalR.HubConnectionBuilder()
+                .withUrl("/etlNotifications", {
+                    accessTokenFactory: () => getAccessToken()
+                })
                 .withAutomaticReconnect()
                 .build();
 
-            connection.on("TaskStarted", (params) => {
+            signalRConnection.on("TaskStarted", (params) => {
                 const shortParams = params ? params.substring(0, 80) + (params.length > 80 ? "..." : "") : "";
                 showScheduledToast(`⏱️  Tarea programada iniciada${shortParams ? ': ' + shortParams : ''}`, "info");
             });
 
-            connection.on("TaskCompleted", (success, params) => {
+            signalRConnection.on("TaskCompleted", (success, params) => {
                 const shortParams = params ? params.substring(0, 80) + (params.length > 80 ? "..." : "") : "";
                 if (success) {
                     showScheduledToast(`✅ Tarea programada completada exitosamente${shortParams ? ': ' + shortParams : ''}`, "success");
@@ -221,8 +230,19 @@
                 }
             });
 
-            connection.start().catch(err => console.error("SignalR connection failed:", err));
+            signalRConnection.start()
+                .then(() => console.log("SignalR connected, state:", signalRConnection?.state))
+                .catch(err => console.error("SignalR connection failed:", err));
+
+            signalRConnection.onclose(async (error) => {
+                if (error) {
+                    console.error("SignalR connection closed unexpectedly:", error);
+                }
+            });
         }
+
+        // Reconnect SignalR when token is auto-refreshed
+        setOnTokenRefreshed(() => connectToNotificationHub());
 
         function showScheduledToast(message, type) {
             const toast = document.getElementById("scheduledToast");
@@ -239,8 +259,16 @@
             }, 3000);
         }
 
-        // Connect to SignalR hub
-        connectToNotificationHub();
+        // Connect to SignalR hub after authentication
+        (async function init() {
+            const authenticated = await ensureAuthenticated();
+            if (authenticated) {
+                connectToNotificationHub();
+            } else {
+                clearTokens();
+                window.location.href = "login.html";
+            }
+        })();
     </script>
 </body>
 

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
 
@@ -27,7 +28,7 @@ public class ETLExecutionHistoryScheduledRepository
     public async Task<ETLExecutionHistoryScheduled> CreateAsync(ETLExecutionHistoryScheduled item)
     {
         item.Id = Guid.NewGuid();
-        item.Status = "PENDIENTE";
+        item.Status = EtlStatus.Pending;
         item.CreatedAt = DateTime.UtcNow;
         _logger.LogInformation("Creating new ETLExecutionHistoryScheduled record in database for ScheduleId {ScheduleId}.", item.ScheduleId);
         await _context.ETLExecutionHistoryScheduleds.AddAsync(item);

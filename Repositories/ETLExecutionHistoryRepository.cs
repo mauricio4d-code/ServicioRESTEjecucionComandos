@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
 
@@ -45,7 +46,7 @@ public class ETLExecutionHistoryRepository
     public async Task<ETLExecutionHistory> CreateAsync(ETLExecutionHistory item)
     {
         item.Id = Guid.NewGuid();
-        item.Status = "PENDIENTE";
+        item.Status = EtlStatus.Pending;
         _logger.LogInformation("Creating new ETLExecutionHistory record in database for Codigo {Codigo}, CodEnvio {CodEnvio}.", item.Codigo, item.CodEnvio);
         await _context.ETLExecutionHistories.AddAsync(item);
         await _context.SaveChangesAsync();
@@ -129,7 +130,7 @@ public class ETLExecutionHistoryRepository
     {
         _logger.LogDebug("Querying all active ETLExecutionHistory records from database.");
         var result = await _context.ETLExecutionHistories
-            .Where(x => x.Status == "PENDIENTE" || x.Status == "EN PROCESO")
+            .Where(x => x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress)
             .ToListAsync();
         _logger.LogDebug("Retrieved {Count} active ETLExecutionHistory records from database.", result.Count);
         return result;
@@ -144,7 +145,7 @@ public class ETLExecutionHistoryRepository
         var result = await _context.ETLExecutionHistories
             .FirstOrDefaultAsync(x => x.CodEnvio == codEnvio
                 && x.Codigo == codigo
-                && (x.Status == "PENDIENTE" || x.Status == "EN PROCESO"));
+                && (x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress));
         _logger.LogDebug("Active ETLExecutionHistory query for CodEnvio {CodEnvio}, Codigo {Codigo} returned {Found}.", codEnvio, codigo, result != null);
         return result;
     }
@@ -167,7 +168,7 @@ public class ETLExecutionHistoryRepository
         var existing = await _context.ETLExecutionHistories
             .FirstOrDefaultAsync(x => x.CodEnvio == codEnvio
                 && x.Codigo == codigo
-                && (x.Status == "PENDIENTE" || x.Status == "EN PROCESO"));
+                && (x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress));
 
         if (existing != null)
         {
@@ -186,7 +187,7 @@ public class ETLExecutionHistoryRepository
             TipoEntidad = tipoEntidad,
             FechaDatos = fechaDatos,
             Codigo = codigo,
-            Status = "PENDIENTE",
+            Status = EtlStatus.Pending,
             TriggerType = triggerType
         };
 
@@ -214,7 +215,7 @@ public class ETLExecutionHistoryRepository
             var concurrentRecord = await _context.ETLExecutionHistories
                 .FirstOrDefaultAsync(x => x.CodEnvio == codEnvio
                     && x.Codigo == codigo
-                    && (x.Status == "PENDIENTE" || x.Status == "EN PROCESO"));
+                    && (x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress));
 
             if (concurrentRecord != null)
             {

@@ -95,7 +95,7 @@ public class DtxProcessRepository
     {
         _logger.LogDebug("Checking if RUNNING records exist in dtx_process.");
 
-        var sql = @"SELECT CASE WHEN EXISTS (SELECT 1 FROM dtx_process WHERE status = 'RUNNING') THEN 1 ELSE 0 END";
+        var sql = $"SELECT CASE WHEN EXISTS (SELECT 1 FROM dtx_process WHERE status = '{ServicioRESTEjecucionComandos.Constants.DtxProcessStatus.Running}') THEN 1 ELSE 0 END";
 
         var result = _context.Database.SqlQueryRaw<int>(sql).AsEnumerable().FirstOrDefault();
         var exists = result == 1;
@@ -114,8 +114,7 @@ public class DtxProcessRepository
         _logger.LogDebug("Querying dtx_process for RUNNING process IDs older than {Threshold} (cutoff: {Cutoff}).",
             threshold, cutoffTime);
 
-        var sql = @"SELECT id_process FROM dtx_process
-                    WHERE status = 'RUNNING' AND start_time < {0}";
+        var sql = $"SELECT id_process FROM dtx_process WHERE status = '{ServicioRESTEjecucionComandos.Constants.DtxProcessStatus.Running}' AND start_time < {{0}}";
 
         var results = _context.Database.SqlQueryRaw<long>(sql, cutoffTime).AsEnumerable().ToList();
 

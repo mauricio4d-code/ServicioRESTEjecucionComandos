@@ -13,6 +13,13 @@ const AUTO_REFRESH_THRESHOLD_SECONDS = 60;
 
 let autoRefreshTimer = null;
 
+// Callback invoked after a successful token refresh so pages can re-authenticate SignalR connections
+let onTokenRefreshed = null;
+
+function setOnTokenRefreshed(callback) {
+    onTokenRefreshed = callback;
+}
+
 // Guard to prevent concurrent refresh calls (infinite loop protection)
 let refreshInProgress = false;
 let refreshPromise = null;
@@ -164,6 +171,12 @@ async function _doRefresh() {
 
         // Schedule next refresh
         scheduleAutoRefresh();
+
+        // Notify registered callback so pages can re-authenticate SignalR connections
+        if (onTokenRefreshed) {
+            try { onTokenRefreshed(); } catch (cbErr) { console.error("onTokenRefreshed callback error:", cbErr); }
+        }
+
         return true;
     } catch (err) {
         console.error("Auto-refresh error:", err);

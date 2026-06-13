@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Repositories;
@@ -267,6 +268,6 @@ public class RefreshTokenServiceTests : IAsyncLifetime
         // Assert
         var auditLogs = await _context.AuthAuditLogs.ToListAsync();
         auditLogs.Should().NotBeEmpty();
-        auditLogs.Any(log => log.EventType == "TokenRotated" && log.UserId == 5 && log.Success).Should().BeTrue();
+        auditLogs.Any(log => log.EventType == AuditEventType.TokenRotated && log.UserId == 5 && log.Success).Should().BeTrue();
     }
 }

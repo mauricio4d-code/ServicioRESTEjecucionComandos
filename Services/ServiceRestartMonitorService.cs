@@ -1,6 +1,7 @@
 using System.ServiceProcess;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Hosting;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Repositories;
@@ -150,7 +151,7 @@ public class ServiceRestartMonitorService : BackgroundService
         {
             try
             {
-                string newStatus = restartSuccess ? "COMPLETED" : "NOTCOMPLETED";
+                string newStatus = restartSuccess ? DtxProcessStatus.Completed : DtxProcessStatus.NotCompleted;
                 _logger.LogInformation("ServiceRestart: Updating dtx_process record {IdProcess} to status {Status}.", idProcess, newStatus);
                 await dtxProcessRepo.UpdateStatusAsync(idProcess, newStatus, DateTime.UtcNow);
             }

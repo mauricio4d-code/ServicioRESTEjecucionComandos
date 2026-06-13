@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.DTOs;
 using ServicioRESTEjecucionComandos.Models;
@@ -238,16 +239,16 @@ public class ETLExecutorController : ControllerBase
 
         var triggerType = request.Action?.ToUpperInvariant() switch
         {
-            "ACTUALIZAR" => "MANUAL",
-            "REPROCESAR" => "REPROCESO",
-            _ => "MANUAL"
+            "ACTUALIZAR" => TriggerType.Manual,
+            "REPROCESAR" => TriggerType.Reproceso,
+            _ => TriggerType.Manual
         };
 
         // For "Actualizar" (MANUAL) action, compute the target period so the history record
         // stores the date that matches what the external ETL will create in dtx_seguimiento.
         // For "Reprocesar" (REPROCESO), keep the original FechaDatos unchanged.
         bool isDayBased = _dailyCodes.Contains(request.Codigo, StringComparer.OrdinalIgnoreCase);
-        bool isActualizar = triggerType == "MANUAL";
+        bool isActualizar = triggerType == TriggerType.Manual;
         DateOnly targetFecha;
 
         if (isActualizar)
@@ -281,7 +282,7 @@ public class ETLExecutorController : ControllerBase
         return Ok(new
         {
             HistoryId = historyId,
-            Status = "PENDIENTE",
+            Status = EtlStatus.Pending,
             Message = $"Command enqueued successfully via Hangfire. Action: {request.Action}"
         });
     }

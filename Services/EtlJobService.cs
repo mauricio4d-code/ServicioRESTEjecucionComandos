@@ -1,5 +1,6 @@
 using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Repositories;
 
@@ -55,7 +56,7 @@ public class EtlJobService
         string codEnvio,
         DateOnly fechaDatos,
         string codigo,
-        string triggerType = "MANUAL")
+        string triggerType = TriggerType.Manual)
     {
         Guid historyId;
         using (var scope = _scopeFactory.CreateScope())
@@ -93,7 +94,7 @@ public class EtlJobService
             {
                 ScheduleId = schedule.Id,
                 Params = schedule.Params,
-                Status = "PENDIENTE"
+                Status = EtlStatus.Pending
             };
 
             _logger.LogInformation("[DB] Inserting new ETLExecutionHistoryScheduled record with status PENDIENTE for ScheduleId={ScheduleId}.", schedule.Id);
@@ -189,15 +190,15 @@ public class EtlJobService
             await WaitForNoRunningProcessesAsync(dtxProcessRepo);
 
             // Update status to EN PROCESO only after waiting for no running processes
-            _logger.LogInformation("[DB] Updating ETLExecutionHistoryScheduled {HistoryId} status to EN PROCESO.", historyId);
-            await scheduledRepo.UpdateStatusAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
+            _logger.LogInformation("[DB] Updating ETLExecutionHistoryScheduled {HistoryId} status to {Status}.", historyId, EtlStatus.InProgress);
+            await scheduledRepo.UpdateStatusAsync(historyId, EtlStatus.InProgress, executedAt: DateTime.UtcNow);
 
             // Create dtx_process record for this execution
-            var dtxProcess = new DtxProcess
+            var dtxProcess = new Models.DtxProcess
             {
                 AppName = "ETLDATAX",
                 ProcessName = "-",
-                Status = "RUNNING",
+                Status = DtxProcessStatus.Running,
                 StartTime = DateTime.UtcNow,
                 Active = false,
                 Details = history.Params,
@@ -215,7 +216,7 @@ public class EtlJobService
                 Id = Guid.NewGuid(),
                 HistoryId = historyId,
                 Params = history.Params,
-                Status = "EN PROCESO",
+                Status = EtlStatus.InProgress,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -223,7 +224,7 @@ public class EtlJobService
             var result = await _executor.ExecuteAsync(queueItem);
 
             // Update final status
-            var status = result.Success ? "EXITOSO" : "FALLIDO";
+            var status = result.Success ? EtlStatus.Success : EtlStatus.Failed;
             var completedAt = DateTime.UtcNow;
 
             _logger.LogInformation("[DB] Updating final status to {Status} for ScheduledHistoryId {HistoryId}.", status, historyId);
@@ -240,9 +241,9 @@ public class EtlJobService
             {
                 await dtxProcessRepo.UpdateStatusAsync(
                     dtxProcessId.Value,
-                    result.Success ? "COMPLETED" : "NOTCOMPLETED",
+                    result.Success ? DtxProcessStatus.Completed : DtxProcessStatus.NotCompleted,
                     DateTime.UtcNow);
-                _logger.LogInformation("Updated dtx_process record {DtxProcessId} to {Status}.", dtxProcessId.Value, result.Success ? "COMPLETED" : "NOTCOMPLETED");
+                _logger.LogInformation("Updated dtx_process record {DtxProcessId} to {Status}.", dtxProcessId.Value, result.Success ? DtxProcessStatus.Completed : DtxProcessStatus.NotCompleted);
             }
 
             if (result.Success)
@@ -265,7 +266,7 @@ public class EtlJobService
             {
                 await UpdateScheduledStatusInScopeAsync(
                     historyId,
-                    "FALLIDO",
+                    EtlStatus.Failed,
                     error: ex.Message,
                     completedAt: DateTime.UtcNow);
 
@@ -276,7 +277,7 @@ public class EtlJobService
                     {
                         using var scope = _scopeFactory.CreateScope();
                         var dtxProcessRepo = scope.ServiceProvider.GetRequiredService<DtxProcessRepository>();
-                        await dtxProcessRepo.UpdateStatusAsync(dtxProcessId.Value, "NOTCOMPLETED", DateTime.UtcNow);
+                        await dtxProcessRepo.UpdateStatusAsync(dtxProcessId.Value, DtxProcessStatus.NotCompleted, DateTime.UtcNow);
                     }
                     catch (Exception dtxEx)
                     {
@@ -340,15 +341,15 @@ public class EtlJobService
             await WaitForNoRunningProcessesAsync(dtxProcessRepo);
 
             // Update status to EN PROCESO only after waiting for no running processes
-            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} status to EN PROCESO.", historyId);
-            await historyRepo.UpdateStatusAsync(historyId, "EN PROCESO", executedAt: DateTime.UtcNow);
+            _logger.LogInformation("[DB] Updating ETLExecutionHistory {HistoryId} status to {Status}.", historyId, EtlStatus.InProgress);
+            await historyRepo.UpdateStatusAsync(historyId, EtlStatus.InProgress, executedAt: DateTime.UtcNow);
 
             // Determine Start/End dates based on TriggerType.
             // For MANUAL (Actualizar): FechaDatos already holds the target period.
             // For REPROCESO: uses the same period as FechaDatos.
             string startDate, endDate;
             bool isDayBased = _dailyCodes.Contains(history.Codigo, StringComparer.OrdinalIgnoreCase);
-            bool isReproceso = history.TriggerType?.Equals("REPROCESO", StringComparison.OrdinalIgnoreCase) == true;
+            bool isReproceso = history.TriggerType?.Equals(TriggerType.Reproceso, StringComparison.OrdinalIgnoreCase) == true;
 
             if (isDayBased)
             {
@@ -370,16 +371,16 @@ public class EtlJobService
                 Id = Guid.NewGuid(),
                 HistoryId = historyId,
                 Params = $"-code {history.Codigo} -start {startDate} -end {endDate} -codesend {history.CodEnvio}",
-                Status = "EN PROCESO",
+                Status = EtlStatus.InProgress,
                 CreatedAt = DateTime.UtcNow
             };
 
             // Create dtx_process record for this execution
-            var dtxProcess = new DtxProcess
+            var dtxProcess = new Models.DtxProcess
             {
                 AppName = "ETLDATAX",
                 ProcessName = "-",
-                Status = "RUNNING",
+                Status = DtxProcessStatus.Running,
                 StartTime = DateTime.UtcNow,
                 Active = false,
                 Details = $"HistoryId={historyId}, TriggerType={triggerType}",
@@ -418,7 +419,7 @@ public class EtlJobService
                         historyId, verificationFechaDatos);
                     await historyRepo.UpdateStatusWithFechaDatosAsync(
                         historyId,
-                        "EXITOSO",
+                        EtlStatus.Success,
                         fechaDatos: verificationFechaDatos,
                         exitCode: result.ExitCode,
                         output: result.Output,
@@ -444,7 +445,7 @@ public class EtlJobService
                         historyId, startDate, endDate);
                     await historyRepo.UpdateStatusWithFechaDatosAsync(
                         historyId,
-                        "FALLIDO",
+                        EtlStatus.Failed,
                         fechaDatos: verificationFechaDatos,
                         exitCode: result.ExitCode,
                         output: result.Output,
@@ -463,7 +464,7 @@ public class EtlJobService
                     historyId, verificationFechaDatos);
                 await historyRepo.UpdateStatusWithFechaDatosAsync(
                     historyId,
-                    "FALLIDO",
+                    EtlStatus.Failed,
                     fechaDatos: verificationFechaDatos,
                     exitCode: result.ExitCode,
                     output: result.Output,
@@ -474,7 +475,7 @@ public class EtlJobService
             // Update dtx_process record
             if (dtxProcessId.HasValue)
             {
-                string finalStatus = result.Success ? "COMPLETED" : "NOTCOMPLETED";
+                string finalStatus = result.Success ? DtxProcessStatus.Completed : DtxProcessStatus.NotCompleted;
                 await dtxProcessRepo.UpdateStatusAsync(dtxProcessId.Value, finalStatus, DateTime.UtcNow);
                 _logger.LogInformation("Updated dtx_process record {DtxProcessId} to {Status}.", dtxProcessId.Value, finalStatus);
             }
@@ -487,7 +488,7 @@ public class EtlJobService
             {
                 await UpdateStatusInScopeAsync(
                     historyId,
-                    "FALLIDO",
+                    EtlStatus.Failed,
                     error: ex.Message,
                     completedAt: DateTime.UtcNow);
 
@@ -498,7 +499,7 @@ public class EtlJobService
                     {
                         using var scope = _scopeFactory.CreateScope();
                         var dtxProcessRepo = scope.ServiceProvider.GetRequiredService<DtxProcessRepository>();
-                        await dtxProcessRepo.UpdateStatusAsync(dtxProcessId.Value, "NOTCOMPLETED", DateTime.UtcNow);
+                        await dtxProcessRepo.UpdateStatusAsync(dtxProcessId.Value, DtxProcessStatus.NotCompleted, DateTime.UtcNow);
                     }
                     catch (Exception dtxEx)
                     {

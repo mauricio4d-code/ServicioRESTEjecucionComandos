@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Services;
 using Xunit;
@@ -29,7 +30,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Output 'Hello World'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -55,7 +56,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = string.Empty,
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -80,7 +81,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = null,
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -105,7 +106,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"exit 1\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -130,7 +131,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -156,7 +157,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Error 'Test error' -WarningAction SilentlyContinue; exit 1\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -181,7 +182,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Output 'First'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         var item2 = new ExecutionQueueItem
@@ -189,7 +190,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Output 'Second'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -219,7 +220,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = $"-Command \"Write-Output 'Line1'; Write-Output 'Line2'; Write-Output '{marker}'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -247,7 +248,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Output 'error: Something unexpected happened'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -275,7 +276,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Warning 'error: Database connection failed'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Repositories;
+using System.Text.RegularExpressions;
 
 
 namespace ServicioRESTEjecucionComandos.Services;
@@ -14,6 +15,11 @@ namespace ServicioRESTEjecucionComandos.Services;
 /// </summary>
 public class ScheduleSyncService : BackgroundService
 {
+    private static readonly Regex SegmentPattern = new(
+        @"^(\*|(\d+)(-\d+)?(,\d+(-\d+)?)*)$", RegexOptions.Compiled);
+    private static readonly Regex IntervalPattern = new(
+        @"^\*/\d+$", RegexOptions.Compiled);
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ScheduleSyncService> _logger;
     private readonly TimeSpan _syncInterval;
@@ -183,13 +189,12 @@ public class ScheduleSyncService : BackgroundService
         if (parts.Length != 5) return false;
 
         // Each part should be a valid cron segment (number, *, */N, N-N, N,N)
-        var segmentPattern = @"^(\*|(\d+)(-\d+)?(,\d+(-\d+)?)*)$";
         foreach (var part in parts)
         {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(part, segmentPattern))
+            if (!SegmentPattern.IsMatch(part))
             {
                 // Allow */N syntax
-                if (!System.Text.RegularExpressions.Regex.IsMatch(part, @"^\*/\d+$"))
+                if (!IntervalPattern.IsMatch(part))
                 {
                     return false;
                 }

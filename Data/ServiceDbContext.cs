@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Models;
 
 namespace ServicioRESTEjecucionComandos.Data;
@@ -32,7 +33,7 @@ public class ServiceDbContext : DbContext
             entity.Property(e => e.FechaDatos).HasColumnName("FechaDatos").IsRequired().HasColumnType("date");
             entity.Property(e => e.Codigo).HasColumnName("Codigo").IsRequired();
             entity.Property(e => e.Status).HasColumnName("Status").IsRequired().HasMaxLength(20);
-            entity.Property(e => e.TriggerType).HasColumnName("TriggerType").IsRequired().HasMaxLength(20).HasDefaultValue("MANUAL");
+            entity.Property(e => e.TriggerType).HasColumnName("TriggerType").IsRequired().HasMaxLength(20).HasDefaultValue(TriggerType.Manual);
             entity.Property(e => e.ExitCode).HasColumnName("ExitCode");
             entity.Property(e => e.Output).HasColumnName("Output");
             entity.Property(e => e.Error).HasColumnName("Error");
@@ -69,6 +70,6 @@ public class ServiceDbContext : DbContext
 
         // DtxProcess is a read-only legacy table - excluded from migrations.
         // Query it directly via DtxProcessRepository (raw SQL).
-        modelBuilder.Ignore<DtxProcess>();
+        modelBuilder.Ignore<Models.DtxProcess>();
     }
 }

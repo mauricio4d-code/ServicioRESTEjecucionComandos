@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Hubs;
 
 namespace ServicioRESTEjecucionComandos.Services;
@@ -24,7 +25,7 @@ public class ExecutionNotifier
     /// <param name="params">The command-line parameters for this execution.</param>
     public async Task BroadcastTaskStartedAsync(string? @params)
     {
-        await _hubContext.Clients.All.SendAsync("TaskStarted", @params);
+        await _hubContext.Clients.All.SendAsync(SignalREvent.TaskStarted, @params);
     }
 
     /// <summary>
@@ -34,6 +35,6 @@ public class ExecutionNotifier
     /// <param name="params">The command-line parameters for this execution.</param>
     public async Task BroadcastTaskCompletedAsync(bool success, string? @params)
     {
-        await _hubContext.Clients.All.SendAsync("TaskCompleted", success, @params);
+        await _hubContext.Clients.All.SendAsync(SignalREvent.TaskCompleted, success, @params);
     }
 }

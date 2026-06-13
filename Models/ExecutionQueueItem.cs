@@ -1,3 +1,5 @@
+using ServicioRESTEjecucionComandos.Constants;
+
 namespace ServicioRESTEjecucionComandos.Models;
 
 /// <summary>
@@ -24,7 +26,7 @@ public class ExecutionQueueItem
     /// <summary>
     /// Current status of the execution item: PENDIENTE, EN PROCESO, EXITOSO, FALLIDO.
     /// </summary>
-    public string Status { get; set; } = "PENDIENTE";
+    public string Status { get; set; } = EtlStatus.Pending;
 
     /// <summary>
     /// Result or error message after execution completes.

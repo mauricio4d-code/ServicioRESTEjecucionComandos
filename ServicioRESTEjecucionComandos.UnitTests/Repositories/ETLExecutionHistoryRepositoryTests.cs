@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Repositories;
@@ -41,7 +42,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            TriggerType = "MANUAL"
+            TriggerType = TriggerType.Manual
         };
 
         // Act
@@ -49,7 +50,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
 
         // Assert
         created.Id.Should().NotBe(Guid.Empty);
-        created.Status.Should().Be("PENDIENTE");
+        created.Status.Should().Be(EtlStatus.Pending);
         created.CodEnvio.Should().Be("ENV001");
     }
 
@@ -64,7 +65,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "EXITOSO"
+            Status = EtlStatus.Success
         };
         await _context.ETLExecutionHistories.AddAsync(item);
         await _context.SaveChangesAsync();
@@ -75,7 +76,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
         // Assert
         found.Should().NotBeNull();
         found!.Id.Should().Be(item.Id);
-        found.Status.Should().Be("EXITOSO");
+        found.Status.Should().Be(EtlStatus.Success);
     }
 
     [Fact]
@@ -101,7 +102,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
                 TipoEntidad = "TEST",
                 FechaDatos = DateOnly.FromDateTime(DateTime.Today),
                 Codigo = "COD001",
-                Status = "PENDIENTE"
+                Status = EtlStatus.Pending
             },
             new()
             {
@@ -110,7 +111,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
                 TipoEntidad = "TEST",
                 FechaDatos = DateOnly.FromDateTime(DateTime.Today),
                 Codigo = "COD002",
-                Status = "EXITOSO"
+                Status = EtlStatus.Success
             }
         };
         await _context.ETLExecutionHistories.AddRangeAsync(items);
@@ -136,7 +137,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
                 TipoEntidad = "TEST",
                 FechaDatos = DateOnly.FromDateTime(DateTime.Today),
                 Codigo = "COD001",
-                Status = "PENDIENTE"
+                Status = EtlStatus.Pending
             },
             new()
             {
@@ -145,7 +146,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
                 TipoEntidad = "TEST",
                 FechaDatos = DateOnly.FromDateTime(DateTime.Today),
                 Codigo = "COD002",
-                Status = "EXITOSO"
+                Status = EtlStatus.Success
             },
             new()
             {
@@ -154,18 +155,18 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
                 TipoEntidad = "TEST",
                 FechaDatos = DateOnly.FromDateTime(DateTime.Today),
                 Codigo = "COD003",
-                Status = "PENDIENTE"
+                Status = EtlStatus.Pending
             }
         };
         await _context.ETLExecutionHistories.AddRangeAsync(items);
         await _context.SaveChangesAsync();
 
         // Act
-        var pending = await _repository.GetByStatusAsync("PENDIENTE");
+        var pending = await _repository.GetByStatusAsync(EtlStatus.Pending);
 
         // Assert
         pending.Should().HaveCount(2);
-        pending.Should().OnlyContain(x => x.Status == "PENDIENTE");
+        pending.Should().OnlyContain(x => x.Status == EtlStatus.Pending);
     }
 
     [Fact]
@@ -179,13 +180,13 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
         await _context.ETLExecutionHistories.AddAsync(item);
         await _context.SaveChangesAsync();
 
         // Act
-        item.Status = "EXITOSO";
+        item.Status = EtlStatus.Success;
         item.ExitCode = 0;
         item.Output = "Success output";
         await _repository.UpdateAsync(item);
@@ -193,7 +194,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
         // Assert
         var updated = await _repository.GetByIdAsync(item.Id);
         updated.Should().NotBeNull();
-        updated!.Status.Should().Be("EXITOSO");
+        updated!.Status.Should().Be(EtlStatus.Success);
         updated.ExitCode.Should().Be(0);
         updated.Output.Should().Be("Success output");
     }
@@ -209,7 +210,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
         await _context.ETLExecutionHistories.AddAsync(item);
         await _context.SaveChangesAsync();
@@ -219,13 +220,13 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
         // Act
         await _repository.UpdateStatusAsync(
             item.Id,
-            "EN PROCESO",
+            EtlStatus.InProgress,
             executedAt: executedAt);
 
         // Assert
         var updated = await _repository.GetByIdAsync(item.Id);
         updated.Should().NotBeNull();
-        updated!.Status.Should().Be("EN PROCESO");
+        updated!.Status.Should().Be(EtlStatus.InProgress);
         updated.ExecutedAt.Should().Be(executedAt);
     }
 
@@ -235,7 +236,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
         // Act
         var act = () => _repository.UpdateStatusAsync(
             Guid.NewGuid(),
-            "FALLIDO",
+            EtlStatus.Failed,
             exitCode: 1,
             error: "Test error");
 
@@ -254,7 +255,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
         var completedItem = new ETLExecutionHistory
         {
@@ -263,7 +264,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "EXITOSO"
+            Status = EtlStatus.Success
         };
         await _context.ETLExecutionHistories.AddRangeAsync(pendingItem, completedItem);
         await _context.SaveChangesAsync();
@@ -273,7 +274,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
 
         // Assert
         active.Should().NotBeNull();
-        active!.Status.Should().BeOneOf("PENDIENTE", "EN PROCESO");
+        active!.Status.Should().BeOneOf(EtlStatus.Pending, EtlStatus.InProgress);
     }
 
     [Fact]
@@ -287,7 +288,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "EXITOSO"
+            Status = EtlStatus.Success
         };
         await _context.ETLExecutionHistories.AddAsync(item);
         await _context.SaveChangesAsync();
@@ -310,7 +311,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
         await _context.ETLExecutionHistories.AddAsync(item);
         await _context.SaveChangesAsync();
@@ -320,14 +321,14 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
         // Act
         await _repository.UpdateStatusWithFechaDatosAsync(
             item.Id,
-            "EXITOSO",
+            EtlStatus.Success,
             fechaDatos: newFechaDatos,
             exitCode: 0);
 
         // Assert
         var updated = await _repository.GetByIdAsync(item.Id);
         updated.Should().NotBeNull();
-        updated!.Status.Should().Be("EXITOSO");
+        updated!.Status.Should().Be(EtlStatus.Success);
         updated.FechaDatos.Should().Be(newFechaDatos);
         updated.ExitCode.Should().Be(0);
     }
@@ -343,7 +344,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
         var inProgressItem = new ETLExecutionHistory
         {
@@ -352,7 +353,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD002",
-            Status = "EN PROCESO"
+            Status = EtlStatus.InProgress
         };
         var successItem = new ETLExecutionHistory
         {
@@ -361,7 +362,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD003",
-            Status = "EXITOSO"
+            Status = EtlStatus.Success
         };
         var failedItem = new ETLExecutionHistory
         {
@@ -370,7 +371,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD004",
-            Status = "FALLIDO"
+            Status = EtlStatus.Failed
         };
 
         await _context.ETLExecutionHistories.AddRangeAsync(pendingItem, inProgressItem, successItem, failedItem);
@@ -381,7 +382,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
 
         // Assert
         active.Should().HaveCount(2);
-        active.Should().OnlyContain(x => x.Status == "PENDIENTE" || x.Status == "EN PROCESO");
+        active.Should().OnlyContain(x => x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress);
         active.Select(x => x.Id).Should().Contain(pendingItem.Id);
         active.Select(x => x.Id).Should().Contain(inProgressItem.Id);
     }
@@ -409,7 +410,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
                 TipoEntidad = "TEST",
                 FechaDatos = DateOnly.FromDateTime(DateTime.Today),
                 Codigo = "COD001",
-                Status = "EXITOSO"
+                Status = EtlStatus.Success
             },
             new()
             {
@@ -418,7 +419,7 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
                 TipoEntidad = "TEST",
                 FechaDatos = DateOnly.FromDateTime(DateTime.Today),
                 Codigo = "COD002",
-                Status = "FALLIDO"
+                Status = EtlStatus.Failed
             }
         };
         await _context.ETLExecutionHistories.AddRangeAsync(items);
@@ -441,16 +442,16 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
         var fechaDatos = DateOnly.FromDateTime(DateTime.Today);
 
         // Act
-        var result = await _repository.UpsertOrGetActiveAsync(codEnvio, codigo, tipoEntidad, fechaDatos, "MANUAL");
+        var result = await _repository.UpsertOrGetActiveAsync(codEnvio, codigo, tipoEntidad, fechaDatos, TriggerType.Manual);
 
         // Assert
         result.Should().NotBeNull();
-        result!.Status.Should().Be("PENDIENTE");
+        result!.Status.Should().Be(EtlStatus.Pending);
         result.CodEnvio.Should().Be(codEnvio);
         result.Codigo.Should().Be(codigo);
         result.TipoEntidad.Should().Be(tipoEntidad);
         result.FechaDatos.Should().Be(fechaDatos);
-        result.TriggerType.Should().Be("MANUAL");
+        result.TriggerType.Should().Be(TriggerType.Manual);
     }
 
     [Fact]
@@ -464,20 +465,20 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "EN PROCESO",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.InProgress,
+            TriggerType = TriggerType.Manual
         };
         await _context.ETLExecutionHistories.AddAsync(existing);
         await _context.SaveChangesAsync();
 
         // Act
         var result = await _repository.UpsertOrGetActiveAsync(
-            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), "MANUAL");
+            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), TriggerType.Manual);
 
         // Assert
         result.Should().NotBeNull();
         result!.Id.Should().Be(existing.Id);
-        result.Status.Should().Be("EN PROCESO");
+        result.Status.Should().Be(EtlStatus.InProgress);
     }
 
     [Fact]
@@ -491,20 +492,20 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "EXITOSO",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Success,
+            TriggerType = TriggerType.Manual
         };
         await _context.ETLExecutionHistories.AddAsync(completed);
         await _context.SaveChangesAsync();
 
         // Act
         var result = await _repository.UpsertOrGetActiveAsync(
-            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), "MANUAL");
+            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), TriggerType.Manual);
 
         // Assert
         result.Should().NotBeNull();
         result!.Id.Should().NotBe(completed.Id);
-        result.Status.Should().Be("PENDIENTE");
+        result.Status.Should().Be(EtlStatus.Pending);
     }
 
     [Fact]
@@ -518,19 +519,19 @@ public class ETLExecutionHistoryRepositoryTests : IDisposable
             TipoEntidad = "TEST",
             FechaDatos = DateOnly.FromDateTime(DateTime.Today),
             Codigo = "COD001",
-            Status = "FALLIDO",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Failed,
+            TriggerType = TriggerType.Manual
         };
         await _context.ETLExecutionHistories.AddAsync(failed);
         await _context.SaveChangesAsync();
 
         // Act
         var result = await _repository.UpsertOrGetActiveAsync(
-            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), "MANUAL");
+            "ENV001", "COD001", "TEST", DateOnly.FromDateTime(DateTime.Today), TriggerType.Manual);
 
         // Assert
         result.Should().NotBeNull();
         result!.Id.Should().NotBe(failed.Id);
-        result.Status.Should().Be("PENDIENTE");
+        result.Status.Should().Be(EtlStatus.Pending);
     }
 }

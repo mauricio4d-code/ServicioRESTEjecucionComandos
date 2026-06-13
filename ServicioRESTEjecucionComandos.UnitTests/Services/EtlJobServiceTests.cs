@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Repositories;
 using ServicioRESTEjecucionComandos.Services;
@@ -109,8 +110,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "COD001",
             TipoEntidad = "ENTIDAD1",
             FechaDatos = new DateOnly(2024, 1, 15),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -146,12 +147,12 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - verify UpdateStatusWithFechaDatosAsync was called with "EXITOSO"
         _historyRepoMock.Verify(
             r => r.UpdateStatusWithFechaDatosAsync(
-                historyId, "EXITOSO", It.IsAny<DateOnly?>(),
+                historyId, EtlStatus.Success, It.IsAny<DateOnly?>(),
                 It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
@@ -172,8 +173,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "COD002",
             TipoEntidad = "ENTIDAD2",
             FechaDatos = new DateOnly(2024, 2, 1),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -205,12 +206,12 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - should mark as FALLIDO with descriptive error
         _historyRepoMock.Verify(
             r => r.UpdateStatusWithFechaDatosAsync(
-                historyId, "FALLIDO", It.IsAny<DateOnly?>(),
+                historyId, EtlStatus.Failed, It.IsAny<DateOnly?>(),
                 It.IsAny<int?>(), It.IsAny<string>(), It.Is<string>(s => s != null && s.Contains("No se encontraron datos")),
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
@@ -231,8 +232,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "COD003",
             TipoEntidad = "ENTIDAD3",
             FechaDatos = new DateOnly(2024, 3, 15),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -268,12 +269,12 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - should mark as FALLIDO because period doesn't match
         _historyRepoMock.Verify(
             r => r.UpdateStatusWithFechaDatosAsync(
-                historyId, "FALLIDO", It.IsAny<DateOnly?>(),
+                historyId, EtlStatus.Failed, It.IsAny<DateOnly?>(),
                 It.IsAny<int?>(), It.IsAny<string>(), It.Is<string>(s => s != null && s.Contains("No se encontraron datos")),
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
@@ -294,8 +295,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "COD004",
             TipoEntidad = "ENTIDAD4",
             FechaDatos = new DateOnly(2024, 4, 1),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -327,7 +328,7 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - should call VerifyDtxSeguimientoAsync
         _historyRepoMock.Verify(
@@ -338,7 +339,7 @@ public class EtlJobServiceTests : IDisposable
         // Assert - should mark as FALLIDO with FechaDatos from verification
         _historyRepoMock.Verify(
             r => r.UpdateStatusWithFechaDatosAsync(
-                historyId, "FALLIDO", new DateOnly(2024, 4, 10),
+                historyId, EtlStatus.Failed, new DateOnly(2024, 4, 10),
                 1, "Partial output", "Connection refused",
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
@@ -359,8 +360,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "COD005",
             TipoEntidad = "ENTIDAD5",
             FechaDatos = new DateOnly(2024, 5, 1),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -388,7 +389,7 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - should call VerifyDtxSeguimientoAsync
         _historyRepoMock.Verify(
@@ -399,7 +400,7 @@ public class EtlJobServiceTests : IDisposable
         // Assert - should mark as FALLIDO with null FechaDatos
         _historyRepoMock.Verify(
             r => r.UpdateStatusWithFechaDatosAsync(
-                historyId, "FALLIDO", It.Is<DateOnly?>(d => !d.HasValue),
+                historyId, EtlStatus.Failed, It.Is<DateOnly?>(d => !d.HasValue),
                 3, string.Empty, "Timeout waiting for data",
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
@@ -420,8 +421,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "COD006",
             TipoEntidad = "ENTIDAD6",
             FechaDatos = new DateOnly(2024, 6, 1),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -435,12 +436,12 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - should mark as FALLIDO with exception message
         _historyRepoMock.Verify(
             r => r.UpdateStatusAsync(
-                historyId, "FALLIDO", It.IsAny<int?>(), It.IsAny<string>(),
+                historyId, EtlStatus.Failed, It.IsAny<int?>(), It.IsAny<string>(),
                 It.Is<string>(s => s != null && s.Contains("Process not found")),
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
@@ -467,7 +468,7 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - no status update should occur
         _historyRepoMock.Verify(
@@ -495,8 +496,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "DAILY001",  // This is in the daily codes list
             TipoEntidad = "ENTIDAD1",
             FechaDatos = new DateOnly(2024, 3, 15),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -532,12 +533,12 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert
         _historyRepoMock.Verify(
             r => r.UpdateStatusWithFechaDatosAsync(
-                historyId, "EXITOSO", It.IsAny<DateOnly?>(),
+                historyId, EtlStatus.Success, It.IsAny<DateOnly?>(),
                 It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
@@ -556,8 +557,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "DAILY001",
             TipoEntidad = "ENTIDAD1",
             FechaDatos = new DateOnly(2024, 3, 15),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -589,7 +590,7 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - should call VerifyDtxSeguimientoAsync
         _historyRepoMock.Verify(
@@ -600,7 +601,7 @@ public class EtlJobServiceTests : IDisposable
         // Assert - should mark as FALLIDO with FechaDatos from verification
         _historyRepoMock.Verify(
             r => r.UpdateStatusWithFechaDatosAsync(
-                historyId, "FALLIDO", new DateOnly(2024, 3, 14),
+                historyId, EtlStatus.Failed, new DateOnly(2024, 3, 14),
                 3, string.Empty, "Timeout waiting for data",
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>()),
             Times.Once,
@@ -621,8 +622,8 @@ public class EtlJobServiceTests : IDisposable
             Codigo = "COD010",
             TipoEntidad = "ENTIDAD10",
             FechaDatos = new DateOnly(2024, 7, 1),
-            Status = "PENDIENTE",
-            TriggerType = "MANUAL"
+            Status = EtlStatus.Pending,
+            TriggerType = TriggerType.Manual
         };
         SeedHistory(history);
 
@@ -655,13 +656,13 @@ public class EtlJobServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        await service.ExecuteJobByIdAsync(historyId, "MANUAL");
+        await service.ExecuteJobByIdAsync(historyId, TriggerType.Manual);
 
         // Assert - FechaDatos must match the last dtx_seguimiento record for same cod_envio + codigo
         _historyRepoMock.Verify(
             r => r.UpdateStatusWithFechaDatosAsync(
                 historyId,
-                "FALLIDO",
+                EtlStatus.Failed,
                 expectedFechaDatos,  // This is the critical assertion
                 2,
                 "Some partial work done",

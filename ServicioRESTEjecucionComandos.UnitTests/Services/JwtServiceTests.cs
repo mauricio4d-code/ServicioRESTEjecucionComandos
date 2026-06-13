@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Services;
 using System.IdentityModel.Tokens.Jwt;
@@ -36,13 +37,13 @@ public class JwtServiceTests
             Firstname = "Test",
             Lastname = "User",
             Password = "hashed_password",
-            Userstate = "Activo"
+            Userstate = UserState.Active
         };
 
         _testRole = new UserRole
         {
             Id = 1,
-            Name = "Administrador"
+            Name = Role.Administrador
         };
 
         _testUser.UserRole = _testRole;
@@ -75,7 +76,7 @@ public class JwtServiceTests
         jwtToken.Claims.Should().Contain(c => c.Type == System.Security.Claims.ClaimTypes.Email && c.Value == "test@example.com");
         jwtToken.Claims.Should().Contain(c => c.Type == System.Security.Claims.ClaimTypes.GivenName && c.Value == "Test");
         jwtToken.Claims.Should().Contain(c => c.Type == System.Security.Claims.ClaimTypes.Surname && c.Value == "User");
-        jwtToken.Claims.Should().Contain(c => c.Type == System.Security.Claims.ClaimTypes.Role && c.Value == "Administrador");
+        jwtToken.Claims.Should().Contain(c => c.Type == System.Security.Claims.ClaimTypes.Role && c.Value == Role.Administrador);
     }
 
     [Fact]
@@ -126,9 +127,9 @@ public class JwtServiceTests
             Firstname = null,
             Lastname = null,
             Password = "hash",
-            Userstate = "Activo"
+            Userstate = UserState.Active
         };
-        var role = new UserRole { Id = 2, Name = "Usuario" };
+        var role = new UserRole { Id = 2, Name = Role.Usuario };
 
         // Act
         var tokenString = _jwtService.GenerateToken(user, role);

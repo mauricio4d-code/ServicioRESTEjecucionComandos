@@ -1,3 +1,5 @@
+using ServicioRESTEjecucionComandos.Constants;
+
 namespace ServicioRESTEjecucionComandos.Models;
 
 /// <summary>
@@ -24,7 +26,7 @@ public class ETLExecutionHistoryScheduled
     /// <summary>
     /// Current execution status: PENDIENTE, EN PROCESO, EXITOSO, FALLIDO.
     /// </summary>
-    public string Status { get; set; } = "PENDIENTE";
+    public string Status { get; set; } = EtlStatus.Pending;
 
     /// <summary>
     /// Exit code from the command execution.

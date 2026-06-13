@@ -401,11 +401,6 @@ td.separator, th.separator {
     overflow: hidden;
 }
 
-/* Right border on "Acciones" column to separate from status panel */
-td:nth-child(4), th:nth-child(4) {
-    border-right: 1px solid #f0f0f5;
-}
-
 /* Left border on "Estado Actual" column */
 td:nth-child(6), th:nth-child(6) {
     border-left: 1px solid #f0f0f5;
@@ -451,7 +446,7 @@ th:nth-child(3), th:nth-child(6), th:nth-child(7) {
 }
 
 .btn-actualizar {
-    background-color: #1a1a2e;
+    background-color: #706ada;
     color: #ffffff;
 }
 

@@ -48,28 +48,6 @@ public class ETLExecutionHistoryScheduledRepository
     }
 
     /// <summary>
-    /// Gets all ETLExecutionHistoryScheduled records, ordered by creation time descending.
-    /// </summary>
-    public async Task<List<ETLExecutionHistoryScheduled>> GetAllAsync()
-    {
-        _logger.LogDebug("Querying all ETLExecutionHistoryScheduled records from database.");
-        var result = await _context.ETLExecutionHistoryScheduleds.OrderByDescending(x => x.CreatedAt).ToListAsync();
-        _logger.LogDebug("Retrieved {Count} ETLExecutionHistoryScheduled records from database.", result.Count);
-        return result;
-    }
-
-    /// <summary>
-    /// Gets ETLExecutionHistoryScheduled records filtered by status.
-    /// </summary>
-    public async Task<List<ETLExecutionHistoryScheduled>> GetByStatusAsync(string status)
-    {
-        _logger.LogDebug("Querying ETLExecutionHistoryScheduled records from database filtered by status {Status}.", status);
-        var result = await _context.ETLExecutionHistoryScheduleds.Where(x => x.Status == status).ToListAsync();
-        _logger.LogDebug("Retrieved {Count} ETLExecutionHistoryScheduled records with status {Status} from database.", result.Count, status);
-        return result;
-    }
-
-    /// <summary>
     /// Updates the status and related fields of an ETLExecutionHistoryScheduled record atomically.
     /// </summary>
     public async Task UpdateStatusAsync(

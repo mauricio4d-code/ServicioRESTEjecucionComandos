@@ -483,6 +483,12 @@ document.addEventListener("keydown", function (e) {
         return;
     }
 
+    // Populate user greeting
+    const userNameEl = document.getElementById("userName");
+    if (userNameEl) {
+        userNameEl.textContent = getFirstname() || "Usuario";
+    }
+
     await loadSchedules();
     scheduleAutoRefresh();
     renderFooter();

@@ -60,7 +60,7 @@ public class AuthControllerIntegrationTests : IClassFixture<IntegrationTestWebAp
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
         var errorResponse = await response.Content.ReadFromJsonAsync<ErrorResponse>();
         errorResponse.Should().NotBeNull();
-        errorResponse!.Message.Should().Contain("Invalid");
+        errorResponse!.Message.Should().Contain("incorrectos");
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public class AuthControllerIntegrationTests : IClassFixture<IntegrationTestWebAp
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
         var errorResponse = await response.Content.ReadFromJsonAsync<ErrorResponse>();
         errorResponse.Should().NotBeNull();
-        errorResponse!.Message.Should().Contain("Invalid");
+        errorResponse!.Message.Should().Contain("incorrectos");
     }
 
     [Fact]

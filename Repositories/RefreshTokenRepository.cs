@@ -98,34 +98,34 @@ public class RefreshTokenRepository
         return result;
     }
 
-    public async Task<int> DeleteExpiredAsync(DateTime utcNow)
+    public async Task<int> DeleteExpiredAsync(DateTime utcNow, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Deleting expired refresh tokens from database (before {UtcNow}).", utcNow);
         var expiredTokens = await _context.RefreshTokens
             .Where(rt => rt.ExpiresAtUtc < utcNow)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (expiredTokens.Any())
         {
             _context.RefreshTokens.RemoveRange(expiredTokens);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         _logger.LogInformation("Deleted {Count} expired refresh tokens from database.", expiredTokens.Count);
         return expiredTokens.Count;
     }
 
-    public async Task<int> DeleteOldAuditLogsAsync(DateTime cutoffDate)
+    public async Task<int> DeleteOldAuditLogsAsync(DateTime cutoffDate, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Deleting old auth audit logs from database (before {CutoffDate}).", cutoffDate);
         var oldLogs = await _context.AuthAuditLogs
             .Where(log => log.TimestampUtc < cutoffDate)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (oldLogs.Any())
         {
             _context.AuthAuditLogs.RemoveRange(oldLogs);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         _logger.LogInformation("Deleted {Count} old auth audit logs from database.", oldLogs.Count);

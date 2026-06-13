@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
@@ -169,6 +170,32 @@ builder.Services.AddSingleton<IPasswordValidator, LegacyPasswordValidator>();
 
 // Add controllers
 builder.Services.AddControllers();
+
+// -----------------------------------------------------------------------
+// Rate Limiting configuration (protects login endpoint from brute-force)
+// -----------------------------------------------------------------------
+var rateLimitingConfig = builder.Configuration.GetSection("RateLimiting:LoginPolicy");
+builder.Services.AddRateLimiter(options =>
+{
+    var windowSeconds = rateLimitingConfig.GetValue<int>("WindowSeconds", 60);
+    var maxRequests = rateLimitingConfig.GetValue<int>("MaxRequests", 5);
+
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            "{\"error\":\"Demasiadas Peticiones\",\"message\":\"Se han realizado demasiados intentos de inicio de sesión. Inténtelo de nuevo más tarde.\"}",
+            token);
+    };
+
+    options.AddFixedWindowLimiter(policyName: "LoginPolicy", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = maxRequests;
+        limiterOptions.Window = TimeSpan.FromSeconds(windowSeconds);
+        limiterOptions.QueueLimit = 0;
+    });
+});
 
 // Register CommandExecutor as singleton (parameters are now per-item, not static)
 builder.Services.AddSingleton<CommandExecutor>(sp =>
@@ -518,6 +545,9 @@ app.UseStaticFiles();
 // Authentication + Authorization middleware must come BEFORE endpoint routing
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Rate limiting middleware must come BEFORE endpoint routing
+app.UseRateLimiter();
 
 // Redirect root path to index.html
 app.MapGet("/", () => Results.Redirect("/index.html"));

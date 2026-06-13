@@ -46,6 +46,8 @@ public class IntegrationTestWebApplicationFactory : WebApplicationFactory<Progra
         builder.UseSetting("Jwt:Audience", "TestAudience");
         builder.UseSetting("Jwt:AccessTokenMinutes", "60");
         builder.UseSetting("Jwt:RefreshTokenMinutes", "1440");
+        // Disable rate limiting in tests by setting a very high permit limit.
+        builder.UseSetting("RateLimiting:LoginPolicy:MaxRequests", "999999");
         // Use named in-memory SQLite databases so all connections share the same database.
         // The "file:name?mode=memory&cache=shared" URI format creates a named in-memory database
         // that persists across multiple connections (unlike ":memory:" which is connection-local).

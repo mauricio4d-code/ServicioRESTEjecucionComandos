@@ -170,6 +170,17 @@ Configura el monitoreo y reinicio automático del servicio Windows:
 |-------|-------------|-------------------|
 | `SyncIntervalSeconds` | Intervalo entre sincronizaciones de programaciones DB → Hangfire | `60` |
 
+### RateLimiting
+
+Configura la protección contra ataques de fuerza bruta en el endpoint de login:
+
+| Clave | Descripción | Valor por Defecto |
+|-------|-------------|-------------------|
+| `LoginPolicy:WindowSeconds` | Ventana de tiempo para el límite de peticiones | `60` |
+| `LoginPolicy:MaxRequests` | Máximo de peticiones permitidas en la ventana | `5` |
+| `LoginPolicy:SegmentSeconds` | Segmento de tiempo para el límite secundario | `10` |
+| `LoginPolicy:SegmentMaxRequests` | Máximo de peticiones por segmento | `1` |
+
 ### Kestrel
 
 | Clave | Descripción | Valor por Defecto |
@@ -259,6 +270,37 @@ Cuando `ASPNETCORE_ENVIRONMENT=Production`:
 ## Windows Service (Modo Dual)
 
 El servicio puede ejecutarse como aplicación de consola o como servicio de Windows gracias a `builder.Host.UseWindowsService()`. En modo Production, el servicio puede instalarse como un servicio de Windows que se inicia automáticamente con el sistema.
+
+### Scripts de Instalación
+
+La carpeta [`InstallerSimplified/Scripts/`](InstallerSimplified/Scripts/) contiene scripts de PowerShell para la instalación, configuración y desinstalación del servicio:
+
+| Script | Descripción |
+|--------|-------------|
+| [`Install.ps1`](InstallerSimplified/Scripts/Install.ps1) | Instala el servicio de Windows |
+| [`Uninstall.ps1`](InstallerSimplified/Scripts/Uninstall.ps1) | Desinstala el servicio de Windows |
+| [`FirewallRule.ps1`](InstallerSimplified/Scripts/FirewallRule.ps1) | Añade la regla de firewall para el puerto Kestrel |
+| [`FirewallCheck.ps1`](InstallerSimplified/Scripts/FirewallCheck.ps1) | Verifica que las reglas de firewall están configuradas |
+| [`KestrelCheck.ps1`](InstallerSimplified/Scripts/KestrelCheck.ps1) | Valida que Kestrel está escuchando en todas las interfaces |
+
+**Requisitos:** Ejecutar PowerShell como Administrador.
+
+```powershell
+# Instalar el servicio
+powershell.exe -ExecutionPolicy Bypass -File .\Install.ps1
+
+# Configurar firewall
+powershell.exe -ExecutionPolicy Bypass -File .\FirewallRule.ps1
+
+# Verificar configuración
+powershell.exe -ExecutionPolicy Bypass -File .\FirewallCheck.ps1
+powershell.exe -ExecutionPolicy Bypass -File .\KestrelCheck.ps1
+```
+
+Para validar la conectividad desde otra máquina de la red:
+```powershell
+Test-NetConnection IP_DEL_SERVIDOR -Port 5000
+```
 
 ---
 
@@ -393,6 +435,23 @@ Cierra sesión revocando el token de refresco.
 Todos los endpoints de `/api/etlexecutor/*` y `/api/schedules/*` están protegidos con el atributo `[Authorize]`. Las solicitudes sin un token JWT válido recibirán una respuesta `401 Unauthorized` con una respuesta JSON personalizada.
 
 El endpoint `/api/schedules/*` requiere adicionalmente la política `AdminOnly`, que acepta los roles `"Administrador"` o `"Administador"` (con tolerancia a la falta de la 'r' final).
+
+### Rate Limiting en Login
+
+El endpoint `/api/auth/login` está protegido contra ataques de fuerza bruta mediante **Rate Limiting** con una política de ventana fija (`FixedWindowLimiter`). La configuración se define en la sección `RateLimiting:LoginPolicy` de [`appsettings.json`](appsettings.json).
+
+- **Ventana:** 60 segundos (por defecto)
+- **Máximo de peticiones:** 5 por ventana
+- **Segmento:** 10 segundos con máximo 1 petición por segmento
+- **Respuesta:** `429 Too Many Requests` con mensaje JSON personalizado
+
+Cuando se excede el límite, el cliente recibe:
+```json
+{
+  "error": "Demasiadas Peticiones",
+  "message": "Se han realizado demasiados intentos de inicio de sesión. Inténtelo de nuevo más tarde."
+}
+```
 
 ---
 
@@ -812,6 +871,7 @@ Cubren:
 - [`AuthControllerIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/AuthControllerIntegrationTests.cs)
 - [`EtlExecutorControllerIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/EtlExecutorControllerIntegrationTests.cs)
 - [`SchedulesControllerIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/SchedulesControllerIntegrationTests.cs)
+- [`RateLimitingIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/RateLimitingIntegrationTests.cs)
 
 ### Ejecutar pruebas
 
@@ -837,7 +897,79 @@ dotnet test
 - En Production, la base de datos SQLite y los logs se almacenan en `%ProgramData%\ServicioRESTEjecucionComandos\`
 - Hangfire usa almacenamiento en memoria; los jobs programados se pierden al reiniciar (se re-sincronizan mediante `ScheduleSyncService`)
 - No hay endpoint de dashboard de Hangfire habilitado
+- **Protección contra condiciones de carrera:** La tabla `hist_etl_execution` tiene un índice único parcial (`IX_hist_etl_execution_unique_active`) sobre `(CodEnvio, Codigo)` para registros con `Status IN ('PENDIENTE', 'EN PROCESO')`, lo que previene ejecuciones duplicadas simultáneas a nivel de base de datos (PostgreSQL y SQL Server)
 - `AuthDbContext` es de solo lectura (base de datos legacy); no ejecutar migraciones EF contra él
 - `EtlJobService` y `CommandExecutor` son singletons que usan `IServiceScopeFactory` para acceso scoped a la base de datos
 - Los modelos `BaseDatos` y `DtxProcess` se ignoran con `modelBuilder.Ignore<T>()` y se consultan mediante SQL raw
 - Todos los comentarios y código fuente están en inglés, excepto este archivo de documentación
+
+---
+
+## Resumen de Configuración al Inicio
+
+Al iniciar el servicio, se imprime un resumen de configuración en los logs que incluye los valores activos de:
+
+| Parámetro | Descripción |
+|-----------|-------------|
+| `QueueConfig:DailyCodes` | Códigos diarios permitidos |
+| `QueueConfig:ExcludedCodes` | Códigos excluidos de la cola |
+| `ServiceDb:Provider` | Proveedor de base de datos para ETL (PostgreSQL/SQL Server/SQLite) |
+| `Authentication:Provider` | Proveedor de base de datos para autenticación (PostgreSQL/SQL Server/SQLite) |
+| `Jwt:AccessTokenMinutes` | Duración del token de acceso |
+| `Jwt:RefreshTokenDays` | Duración del token de refresco |
+| `RefreshTokenCleanup:CleanupIntervalMinutes` | Intervalo de limpieza de tokens |
+| `RefreshTokenCleanup:AuditLogRetentionDays` | Retención de logs de auditoría |
+| `ServiceRestart:WindowsServiceName` | Nombre del servicio Windows a monitorear |
+| `ServiceRestart:CheckIntervalMinutes` | Intervalo de verificación del servicio |
+| `ServiceRestart:RunningMinutesThreshold` | Umbral de tiempo de ejecución para reinicio |
+| `QueueConfig:ProcessCheckWaitSeconds` | Tiempo de espera para verificación de proceso |
+
+El servicio también resuelve las direcciones IP accesibles cuando Kestrel está vinculado a `0.0.0.0`, mostrando todas las URLs disponibles en la red local.
+
+---
+
+## Soporte Docker
+
+El proyecto incluye un [`Dockerfile`](Dockerfile) para construir una imagen del servicio y un [`docker-compose.yml`](docker-compose.yml) que orquesta el servicio junto con **Uptime Kuma** para monitoreo de salud.
+
+### Construir la imagen
+
+```bash
+docker build -t servicio-rest-ejecucion-comandos .
+```
+
+### Ejecutar con Docker Compose
+
+```bash
+docker-compose up -d
+```
+
+El archivo `docker-compose.yml` configura:
+- **Servicio principal:** Expone el puerto 5000 con las variables de entorno necesarias
+- **Uptime Kuma:** Monitor de salud con interfaz web en el puerto 3001, configurado para verificar el endpoint `/api/health` del servicio
+
+### Variables de entorno en Docker
+
+Las variables de entorno se pasan mediante la sección `environment` de `docker-compose.yml`, incluyendo:
+- `ASPNETCORE_ENVIRONMENT`
+- `ServiceDb__Provider` / `ServiceDb__ConnectionString`
+- `Authentication__Provider` / `Authentication__ConnectionString`
+- `Jwt__SecretKey`
+- `QueueConfig__ExePath`
+
+---
+
+## Monitoreo de Salud
+
+Además del endpoint `/api/health`, el proyecto incluye [`Monitor-Health.ps1`](Monitor-Health.ps1), un script de PowerShell para verificar el estado del servicio de forma remota:
+
+```powershell
+.\Monitor-Health.ps1 -Url "http://localhost:5000/api/health"
+```
+
+El script verifica:
+- Conectividad HTTP al endpoint de salud
+- Estado de los componentes (base de datos, Hangfire, tiempo de actividad)
+- Respuesta JSON detallada con el estado de cada componente
+
+---

@@ -13,6 +13,13 @@ const AUTO_REFRESH_THRESHOLD_SECONDS = 60;
 
 let autoRefreshTimer = null;
 
+// Callback invoked after a successful token refresh so pages can re-authenticate SignalR connections
+let onTokenRefreshed = null;
+
+function setOnTokenRefreshed(callback) {
+    onTokenRefreshed = callback;
+}
+
 // Guard to prevent concurrent refresh calls (infinite loop protection)
 let refreshInProgress = false;
 let refreshPromise = null;
@@ -164,6 +171,12 @@ async function _doRefresh() {
 
         // Schedule next refresh
         scheduleAutoRefresh();
+
+        // Notify registered callback so pages can re-authenticate SignalR connections
+        if (onTokenRefreshed) {
+            try { onTokenRefreshed(); } catch (cbErr) { console.error("onTokenRefreshed callback error:", cbErr); }
+        }
+
         return true;
     } catch (err) {
         console.error("Auto-refresh error:", err);
@@ -278,4 +291,30 @@ async function authenticatedFetch(url, options = {}) {
     }
 
     return response;
+}
+
+// ========================
+//  Shared Footer Renderer
+// ========================
+
+/**
+ * Renders a shared footer element at the bottom of the page.
+ * Call this after authentication to display the copyright footer.
+ */
+function renderFooter() {
+    const existing = document.getElementById("sharedFooter");
+    if (existing) return; // Prevent duplicate rendering
+
+    const footer = document.createElement("footer");
+    footer.id = "sharedFooter";
+    footer.className = "footer";
+    const currentYear = new Date().getFullYear();
+    footer.textContent = `© Analyze 2.0 - DATAX Bolivia ${currentYear} - Todos los derechos reservados.`;
+
+    const container = document.querySelector(".container");
+    if (container) {
+        container.appendChild(footer);
+    } else {
+        document.body.appendChild(footer);
+    }
 }

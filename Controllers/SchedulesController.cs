@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.DTOs;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Repositories;
@@ -12,7 +13,7 @@ namespace ServicioRESTEjecucionComandos.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "AdminOnly")]
+[Authorize(Policy = Policy.AdminOnly)]
 public class SchedulesController : ControllerBase
 {
     private readonly EtlScheduleRepository _scheduleRepo;

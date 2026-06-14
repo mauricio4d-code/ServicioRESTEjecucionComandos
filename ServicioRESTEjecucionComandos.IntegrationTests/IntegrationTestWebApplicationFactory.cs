@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
 
@@ -46,6 +47,8 @@ public class IntegrationTestWebApplicationFactory : WebApplicationFactory<Progra
         builder.UseSetting("Jwt:Audience", "TestAudience");
         builder.UseSetting("Jwt:AccessTokenMinutes", "60");
         builder.UseSetting("Jwt:RefreshTokenMinutes", "1440");
+        // Disable rate limiting in tests by setting a very high permit limit.
+        builder.UseSetting("RateLimiting:LoginPolicy:MaxRequests", "999999");
         // Use named in-memory SQLite databases so all connections share the same database.
         // The "file:name?mode=memory&cache=shared" URI format creates a named in-memory database
         // that persists across multiple connections (unlike ":memory:" which is connection-local).
@@ -82,15 +85,15 @@ public class IntegrationTestWebApplicationFactory : WebApplicationFactory<Progra
             // Seed test user role if not exists
             if (!await authContext.UserRoles.AnyAsync())
             {
-                await authContext.UserRoles.AddAsync(new UserRole { Name = "Administrador" });
-                await authContext.UserRoles.AddAsync(new UserRole { Name = "Usuario" });
+                await authContext.UserRoles.AddAsync(new UserRole { Name = Role.Administrador });
+                await authContext.UserRoles.AddAsync(new UserRole { Name = Role.Usuario });
                 await authContext.SaveChangesAsync();
             }
 
             // Seed test user if not exists (password "Test123!" MD5 hashed)
             if (!await authContext.Users.AnyAsync(u => u.Email == "test@example.com"))
             {
-                var adminRole = await authContext.UserRoles.FirstAsync(r => r.Name == "Administrador");
+                var adminRole = await authContext.UserRoles.FirstAsync(r => r.Name == Role.Administrador);
                 // MD5 hash of "Test123!"
                 var passwordHash = System.Security.Cryptography.MD5.Create().ComputeHash(System.Text.Encoding.UTF8.GetBytes("Test123!"));
                 var passwordHashHex = Convert.ToHexString(passwordHash).ToLowerInvariant();
@@ -100,7 +103,7 @@ public class IntegrationTestWebApplicationFactory : WebApplicationFactory<Progra
                     Name = "Test",
                     Email = "test@example.com",
                     Password = passwordHashHex,
-                    Userstate = "Activo",
+                    Userstate = UserState.Active,
                     Userroleid = adminRole.Id,
                     Firstname = "Test",
                     Lastname = "User",

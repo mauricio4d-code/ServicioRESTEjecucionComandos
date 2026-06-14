@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ServicioRESTEjecucionComandos.DTOs;
 using ServicioRESTEjecucionComandos.Services;
 
@@ -22,6 +23,7 @@ public class AuthController : ControllerBase
     /// Authenticates a user and returns JWT access token + refresh token.
     /// </summary>
     [HttpPost("login")]
+    [EnableRateLimiting("LoginPolicy")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         if (!ModelState.IsValid)
@@ -42,7 +44,7 @@ public class AuthController : ControllerBase
         {
             return Unauthorized(new ErrorResponse
             {
-                Message = "Invalid email, password, or user account is not active."
+                Message = "Correo electrónico o contraseña incorrectos, o cuenta de usuario inactiva."
             });
         }
 

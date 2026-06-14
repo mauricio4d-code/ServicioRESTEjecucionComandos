@@ -37,20 +37,31 @@ public class RefreshTokenCleanupService : BackgroundService
         {
             try
             {
-                await PerformCleanupAsync();
+                await PerformCleanupAsync(stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("RefreshTokenCleanupService cleanup cancelled");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during cleanup cycle");
             }
 
-            await Task.Delay(_cleanupInterval, stoppingToken);
+            try
+            {
+                await Task.Delay(_cleanupInterval, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when stoppingToken is cancelled
+            }
         }
 
         _logger.LogInformation("RefreshTokenCleanupService stopped");
     }
 
-    private async Task PerformCleanupAsync()
+    private async Task PerformCleanupAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<RefreshTokenRepository>();
@@ -59,12 +70,12 @@ public class RefreshTokenCleanupService : BackgroundService
         var cutoffDate = utcNow.AddDays(-_auditLogRetentionDays);
 
         // Clean expired refresh tokens
-        var expiredCount = await repository.DeleteExpiredAsync(utcNow);
+        var expiredCount = await repository.DeleteExpiredAsync(utcNow, cancellationToken);
         _logger.LogInformation("Cleanup: Removed {Count} expired refresh tokens", expiredCount);
 
         // Clean old audit logs
-        var oldLogsCount = await repository.DeleteOldAuditLogsAsync(cutoffDate);
-        _logger.LogInformation("Cleanup: Removed {Count} audit logs older than {Days} days", 
+        var oldLogsCount = await repository.DeleteOldAuditLogsAsync(cutoffDate, cancellationToken);
+        _logger.LogInformation("Cleanup: Removed {Count} audit logs older than {Days} days",
             oldLogsCount, _auditLogRetentionDays);
 
         _logger.LogInformation("Cleanup cycle completed. Removed {TokenCount} tokens and {LogCount} logs",

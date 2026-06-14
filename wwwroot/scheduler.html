@@ -5,548 +5,55 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
-    <title>Programacion de ETLs - Datax SAFI</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f5f5;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-            padding: 40px 20px;
-        }
-
-        .container {
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 40px;
-            text-align: center;
-            max-width: 1200px;
-            width: 100%;
-        }
-
-        h1 {
-            color: #333333;
-            margin-bottom: 10px;
-            font-size: 24px;
-        }
-
-        p.description {
-            color: #666666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-
-        .btn {
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 13px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .btn-primary {
-            background-color: #0078d4;
-            color: #ffffff;
-        }
-
-        .btn-primary:hover {
-            background-color: #106ebe;
-        }
-
-        .btn-secondary {
-            background-color: #6c757d;
-            color: #ffffff;
-        }
-
-        .btn-secondary:hover {
-            background-color: #5a6268;
-        }
-
-        .btn-danger {
-            background-color: #d32f2f;
-            color: #ffffff;
-        }
-
-        .btn-danger:hover {
-            background-color: #b71c1c;
-        }
-
-        .btn:disabled {
-            background-color: #c5c5c5 !important;
-            cursor: not-allowed;
-        }
-
-        .logout-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 20px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            background-color: #d32f2f;
-            color: #ffffff;
-        }
-
-        .logout-btn:hover {
-            background-color: #b71c1c;
-        }
-
-        /* Toolbar */
-        .toolbar {
-            display: flex;
-            justify-content: center;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        /* Refresh button */
-        .btn-refresh {
-            background-color: #0078d4;
-            color: #ffffff;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .btn-refresh:hover {
-            background-color: #106ebe;
-        }
-
-        .btn-refresh svg {
-            width: 14px;
-            height: 14px;
-            fill: currentColor;
-        }
-
-        .btn-refresh.spinning svg {
-            animation: spin 0.8s linear infinite;
-        }
-
-        /* Data table */
-        .table-container {
-            margin-top: 20px;
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-
-        th, td {
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #333;
-        }
-
-        tr:hover {
-            background-color: #f5f5f5;
-        }
-
-        /* Action buttons */
-        .action-buttons {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 6px;
-        }
-
-        .action-buttons .btn {
-            width: 100%;
-            font-size: 12px;
-            padding: 6px 8px;
-        }
-
-        /* Status badge */
-        .status-badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .status-active {
-            background-color: #d4edda;
-            color: #155724;
-        }
-
-        .status-inactive {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-
-        /* Loading spinner */
-        .loading {
-            display: none;
-            margin-top: 20px;
-        }
-
-        .loading.visible {
-            display: block;
-        }
-
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #0078d4;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Error message */
-        .error-message {
-            margin-top: 10px;
-            font-size: 13px;
-            color: #d32f2f;
-            min-height: 20px;
-        }
-
-        /* Toast notification */
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            border-radius: 4px;
-            color: #fff;
-            font-size: 14px;
-            z-index: 1000;
-            display: none;
-        }
-
-        .toast.visible {
-            display: block;
-        }
-
-        .toast-success {
-            background-color: #28a745;
-        }
-
-        .toast-error {
-            background-color: #d32f2f;
-        }
-
-        /* Modal overlay */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 999;
-        }
-
-        /* Modal content */
-        .modal-content {
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-            padding: 32px;
-            width: 100%;
-            max-width: 500px;
-            text-align: left;
-        }
-
-        .modal-content h2 {
-            color: #333333;
-            margin-bottom: 20px;
-            font-size: 20px;
-            text-align: center;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 6px;
-            color: #333333;
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .form-group input[type="text"] {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            font-size: 14px;
-            transition: border-color 0.2s;
-        }
-
-        .form-group input[type="text"]:focus {
-            outline: none;
-            border-color: #0078d4;
-            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
-        }
-
-        .form-group input[type="number"] {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            font-size: 14px;
-            transition: border-color 0.2s;
-        }
-
-        .form-group input[type="number"]:focus {
-            outline: none;
-            border-color: #0078d4;
-            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
-        }
-
-        .form-group select {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            font-size: 14px;
-            transition: border-color 0.2s;
-            background-color: #fff;
-        }
-
-        .form-group select:focus {
-            outline: none;
-            border-color: #0078d4;
-            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
-        }
-
-        .form-group input[type="checkbox"] {
-            margin-right: 8px;
-        }
-
-        .form-group input[type="time"] {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            font-size: 14px;
-            transition: border-color 0.2s;
-        }
-
-        .form-group input[type="time"]:focus {
-            outline: none;
-            border-color: #0078d4;
-            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
-        }
-
-        .help-text {
-            display: block;
-            margin-top: 4px;
-            font-size: 12px;
-            color: #888888;
-        }
-
-        /* Frequency selector */
-        .frequency-section {
-            margin-bottom: 20px;
-        }
-
-        .frequency-section > label {
-            display: block;
-            margin-bottom: 10px;
-            color: #333333;
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .frequency-options {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-        }
-
-        .frequency-card {
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 16px 12px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            background-color: #ffffff;
-        }
-
-        .frequency-card:hover {
-            border-color: #0078d4;
-            background-color: #f0f7ff;
-        }
-
-        .frequency-card.selected {
-            border-color: #0078d4;
-            background-color: #e8f0fe;
-            box-shadow: 0 0 0 1px #0078d4;
-        }
-
-        .frequency-card svg {
-            width: 28px;
-            height: 28px;
-            margin-bottom: 8px;
-            fill: #666666;
-        }
-
-        .frequency-card.selected svg {
-            fill: #0078d4;
-        }
-
-        .frequency-card span {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: #333333;
-        }
-
-        .frequency-card.selected span {
-            color: #0078d4;
-        }
-
-        /* Conditional fields container */
-        .frequency-fields {
-            display: none;
-        }
-
-        .frequency-fields.visible {
-            display: block;
-        }
-
-        .time-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
-        .modal-actions {
-            display: flex;
-            justify-content: center;
-            gap: 12px;
-            margin-top: 24px;
-        }
-
-        .modal-actions .btn {
-            padding: 10px 32px;
-            font-size: 14px;
-        }
-
-        /* Navigation bar */
-        .nav-bar {
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .nav-bar a {
-            text-decoration: none;
-            color: #0078d4;
-            font-size: 14px;
-            font-weight: 600;
-            padding: 6px 12px;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
-
-        .nav-bar a:hover {
-            background-color: #e8f0fe;
-        }
-
-        .nav-bar a.active {
-            background-color: #0078d4;
-            color: #ffffff;
-        }
-
-        /* Scheduled toast notification */
-        .scheduled-toast {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 12px 28px;
-            border-radius: 6px;
-            color: #fff;
-            font-size: 14px;
-            font-weight: 500;
-            z-index: 10000;
-            display: none;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-        }
-
-        .scheduled-toast.visible {
-            display: block;
-            animation: scheduledFadeInOut 3s ease-in-out;
-        }
-
-        @keyframes scheduledFadeInOut {
-            0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-            10% { opacity: 1; transform: translateX(-50%) translateY(0); }
-            80% { opacity: 1; transform: translateX(-50%) translateY(0); }
-            100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-        }
-
-        .scheduled-toast-info {
-            background-color: #0078d4;
-        }
-
-        .scheduled-toast-success {
-            background-color: #28a745;
-        }
-
-        .scheduled-toast-error {
-            background-color: #d32f2f;
-        }
-    </style>
+    <title>Programacion de ETLs - DATAX BOLIVIA Analyse 2.0</title>
+    <link rel="stylesheet" href="styles/index.css">
+    <link rel="stylesheet" href="styles/scheduler.css">
 </head>
 
 <body>
-    <button class="logout-btn" onclick="logoutAndRedirect()">Cerrar Sesión</button>
-
-    <div class="container">
-        <h1>Programacion de ETLs</h1>
-        <p class="description">Administra las programaciones automáticas de ejecución ETL</p>
-
-        <!-- Navigation -->
-        <div class="nav-bar">
-            <a href="index.html">Ejecución de Comandos</a>
-            <a href="scheduler.html" class="active">Programaciones</a>
+    <!-- Header Bar -->
+    <header class="header-bar">
+        <div class="header-content">
+            <div class="header-left">
+                <div class="logo-container">
+                    <img src="images/logo_datax_bolivia.svg" alt="DATAX BOLIVIA" class="header-logo">
+                    <span class="logo-subtitle">Analyze 2.0</span>
+                </div>
+                <nav class="header-nav">
+                    <a href="index.html">Ejecución de ETLs</a>
+                    <a href="scheduler.html" class="active">Programación de ETLs</a>
+                </nav>
+            </div>
+            <div class="header-right">
+                <span class="user-greeting">Bienvenido, <strong id="userName">Usuario</strong></span>
+                <button class="logout-btn" onclick="logoutAndRedirect()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                    Cerrar Sesión
+                </button>
+            </div>
         </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Page Title -->
+        <h1 class="page-title">Programación de ETLs</h1>
+        <p class="page-subtitle">Administra las programaciones automáticas de ejecución de ETLs</p>
 
         <!-- Toolbar -->
-        <div class="toolbar">
-            <button class="btn btn-primary" onclick="openCreateModal()">Nueva Programación</button>
-            <button id="refreshBtn" class="btn btn-refresh" onclick="loadSchedules()">
+        <div class="scheduler-toolbar">
+            <button class="btn-new-schedule" onclick="openCreateModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Nueva Programación
+            </button>
+            <button class="btn-refresh-datos" onclick="loadSchedules()">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
                 </svg>
@@ -564,22 +71,24 @@
         <div id="errorMessage" class="error-message"></div>
 
         <!-- Results table -->
-        <div id="tableContainer" class="table-container" style="display: none;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Parametros</th>
-                        <th>Frecuencia</th>
-                        <th>Estado</th>
-                        <th>Creado</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="schedulesBody">
-                </tbody>
-            </table>
+        <div id="tableContainer" class="scheduler-table-card" style="display: none;">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Parámetros</th>
+                            <th>Frecuencia</th>
+                            <th>Estado</th>
+                            <th>Creado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="schedulesBody">
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
+    </main>
 
     <!-- Modal -->
     <div id="scheduleModal" class="modal-overlay" style="display: none;">
@@ -588,7 +97,7 @@
             <form id="scheduleForm" onsubmit="saveSchedule(event)">
                 <input type="hidden" id="scheduleId" />
                 <div class="form-group">
-                    <label for="params">Parametros</label>
+                    <label for="params">Parámetros</label>
                     <input type="text" id="params" placeholder="Ej: -reporte REP001 -fecha 2024-01-01" />
                     <small class="help-text">Argumentos de línea de comandos para esta ejecución (opcional)</small>
                 </div>
@@ -668,14 +177,14 @@
                     </div>
                 </div>
                 <div class="form-group" id="isActiveGroup" style="display: none;">
-                    <label>
+                    <label class="checkbox-label">
                         <input type="checkbox" id="isActive" />
                         Activo
                     </label>
                 </div>
                 <div class="modal-actions">
-                    <button type="submit" id="saveBtn" class="btn btn-primary">Guardar</button>
-                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+                    <button type="submit" id="saveBtn" class="btn-primary">Guardar</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
                 </div>
             </form>
         </div>
@@ -692,18 +201,27 @@
     <script src="auth.js"></script>
     <script src="scheduler.js"></script>
     <script>
+        let signalRConnection = null;
+
         function connectToNotificationHub() {
-            const connection = new signalR.HubConnectionBuilder()
-                .withUrl("/etlNotifications")
+            // Stop existing connection before creating a new one to avoid leaks
+            if (signalRConnection) {
+                signalRConnection.stop().catch(err => console.error("Error stopping SignalR connection:", err));
+            }
+
+            signalRConnection = new signalR.HubConnectionBuilder()
+                .withUrl("/etlNotifications", {
+                    accessTokenFactory: () => getAccessToken()
+                })
                 .withAutomaticReconnect()
                 .build();
 
-            connection.on("TaskStarted", (params) => {
+            signalRConnection.on("TaskStarted", (params) => {
                 const shortParams = params ? params.substring(0, 80) + (params.length > 80 ? "..." : "") : "";
                 showScheduledToast(`⏱️  Tarea programada iniciada${shortParams ? ': ' + shortParams : ''}`, "info");
             });
 
-            connection.on("TaskCompleted", (success, params) => {
+            signalRConnection.on("TaskCompleted", (success, params) => {
                 const shortParams = params ? params.substring(0, 80) + (params.length > 80 ? "..." : "") : "";
                 if (success) {
                     showScheduledToast(`✅ Tarea programada completada exitosamente${shortParams ? ': ' + shortParams : ''}`, "success");
@@ -712,8 +230,19 @@
                 }
             });
 
-            connection.start().catch(err => console.error("SignalR connection failed:", err));
+            signalRConnection.start()
+                .then(() => console.log("SignalR connected, state:", signalRConnection?.state))
+                .catch(err => console.error("SignalR connection failed:", err));
+
+            signalRConnection.onclose(async (error) => {
+                if (error) {
+                    console.error("SignalR connection closed unexpectedly:", error);
+                }
+            });
         }
+
+        // Reconnect SignalR when token is auto-refreshed
+        setOnTokenRefreshed(() => connectToNotificationHub());
 
         function showScheduledToast(message, type) {
             const toast = document.getElementById("scheduledToast");
@@ -730,8 +259,16 @@
             }, 3000);
         }
 
-        // Connect to SignalR hub
-        connectToNotificationHub();
+        // Connect to SignalR hub after authentication
+        (async function init() {
+            const authenticated = await ensureAuthenticated();
+            if (authenticated) {
+                connectToNotificationHub();
+            } else {
+                clearTokens();
+                window.location.href = "login.html";
+            }
+        })();
     </script>
 </body>
 

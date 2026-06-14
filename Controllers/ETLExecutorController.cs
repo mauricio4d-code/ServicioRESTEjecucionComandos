@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.DTOs;
 using ServicioRESTEjecucionComandos.Models;
@@ -106,8 +107,8 @@ public class ETLExecutorController : ControllerBase
             _logger.LogInformation("[DB] Executing query-results SQL for codigo='{Codigo}' against dtx_seguimiento + hist_etl_execution.", codigo);
             var results = await _serviceDbContext.Database
                 .SqlQueryRaw<QueryResult>(
-                    @"WITH latest_exec AS (
-                        SELECT DISTINCT ON (""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"")
+                    @"WITH ranked_exec AS (
+                        SELECT
                             ""CodEnvio"",
                             ""TipoEntidad"",
                             ""FechaDatos"",
@@ -116,10 +117,24 @@ public class ETLExecutorController : ControllerBase
                             ""TriggerType"" AS trigger_type,
                             ""CompletedAt"" AS ultima_fecha_ejecucion,
                             ""Output"" AS ""output"",
-                            ""Error"" AS ""error""
+                            ""Error"" AS ""error"",
+                            ROW_NUMBER() OVER (PARTITION BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"" ORDER BY ""CompletedAt"" DESC) AS rn
                         FROM hist_etl_execution
                         WHERE ""Codigo"" = {0}
-                        ORDER BY ""CodEnvio"", ""TipoEntidad"", ""FechaDatos"", ""Codigo"", ""CompletedAt"" DESC NULLS LAST
+                    ),
+                    latest_exec AS (
+                        SELECT
+                            ""CodEnvio"",
+                            ""TipoEntidad"",
+                            ""FechaDatos"",
+                            ""Codigo"",
+                            estado_ejecucion,
+                            trigger_type,
+                            ultima_fecha_ejecucion,
+                            ""output"",
+                            ""error""
+                        FROM ranked_exec
+                        WHERE rn = 1
                     ),
                     seguimiento AS (
                         SELECT
@@ -167,8 +182,21 @@ public class ETLExecutorController : ControllerBase
                         SELECT * FROM seguimiento
                         UNION ALL
                         SELECT * FROM ejecuciones_pendientes
+                    ),
+                    ranked_union AS (
+                        SELECT
+                            ""TipoEntidad"",
+                            ""CodEnvio"",
+                            ""FechaDatos"",
+                            ""EstadoEjecucion"",
+                            ""TriggerType"",
+                            ""UltimaFechaEjecucion"",
+                            ""Output"",
+                            ""Error"",
+                            ROW_NUMBER() OVER (PARTITION BY ""CodEnvio"" ORDER BY ""FechaDatos"" DESC) AS rn
+                        FROM union_data
                     )
-                    SELECT DISTINCT ON (""CodEnvio"")
+                    SELECT
                         ""TipoEntidad"",
                         ""CodEnvio"",
                         ""FechaDatos"",
@@ -177,8 +205,8 @@ public class ETLExecutorController : ControllerBase
                         ""UltimaFechaEjecucion"",
                         ""Output"",
                         ""Error""
-                    FROM union_data
-                    ORDER BY ""CodEnvio"", ""FechaDatos"" DESC",
+                    FROM ranked_union
+                    WHERE rn = 1",
                     codigo)
                 .ToListAsync();
 
@@ -211,16 +239,16 @@ public class ETLExecutorController : ControllerBase
 
         var triggerType = request.Action?.ToUpperInvariant() switch
         {
-            "ACTUALIZAR" => "MANUAL",
-            "REPROCESAR" => "REPROCESO",
-            _ => "MANUAL"
+            "ACTUALIZAR" => TriggerType.Manual,
+            "REPROCESAR" => TriggerType.Reproceso,
+            _ => TriggerType.Manual
         };
 
         // For "Actualizar" (MANUAL) action, compute the target period so the history record
         // stores the date that matches what the external ETL will create in dtx_seguimiento.
         // For "Reprocesar" (REPROCESO), keep the original FechaDatos unchanged.
         bool isDayBased = _dailyCodes.Contains(request.Codigo, StringComparer.OrdinalIgnoreCase);
-        bool isActualizar = triggerType == "MANUAL";
+        bool isActualizar = triggerType == TriggerType.Manual;
         DateOnly targetFecha;
 
         if (isActualizar)
@@ -254,9 +282,22 @@ public class ETLExecutorController : ControllerBase
         return Ok(new
         {
             HistoryId = historyId,
-            Status = "PENDIENTE",
+            Status = EtlStatus.Pending,
             Message = $"Command enqueued successfully via Hangfire. Action: {request.Action}"
         });
+    }
+
+    /// <summary>
+    /// Returns the current status of all active (PENDIENTE or EN PROCESO) ETLExecutionHistory records.
+    /// Used for batch polling execution progress, replacing per-historyId polling to reduce database load.
+    /// </summary>
+    [HttpGet("status/active")]
+    public async Task<IActionResult> GetAllActiveExecutionStatus()
+    {
+        _logger.LogInformation("[DB] Querying all active ETLExecutionHistory records from hist_etl_execution table.");
+        var items = await _historyRepo.GetAllActiveAsync();
+        _logger.LogInformation("[DB] Batch execution status query completed. Active records returned: {Count}.", items.Count);
+        return Ok(items);
     }
 
     /// <summary>

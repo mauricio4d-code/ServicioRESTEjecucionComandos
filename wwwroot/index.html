@@ -5,457 +5,61 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
-    <title>Ejecucion de ETLs - Datax SAFI</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f5f5;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-            padding: 40px 20px;
-        }
-
-        .container {
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 40px;
-            text-align: center;
-            max-width: 1200px;
-            width: 100%;
-        }
-
-        h1 {
-            color: #333333;
-            margin-bottom: 10px;
-            font-size: 24px;
-        }
-
-        p.description {
-            color: #666666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-
-        .btn {
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 13px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .btn-danger {
-            background-color: #d32f2f;
-            color: #ffffff;
-        }
-
-        .btn-danger:hover {
-            background-color: #b71c1c;
-        }
-
-        .logout-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 20px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            background-color: #d32f2f;
-            color: #ffffff;
-        }
-
-        .logout-btn:hover {
-            background-color: #b71c1c;
-        }
-
-        /* Navigation bar */
-        .nav-bar {
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .nav-bar a {
-            text-decoration: none;
-            color: #0078d4;
-            font-size: 14px;
-            font-weight: 600;
-            padding: 6px 12px;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
-
-        .nav-bar a:hover {
-            background-color: #e8f0fe;
-        }
-
-        .nav-bar a.active {
-            background-color: #0078d4;
-            color: #ffffff;
-        }
-
-        .user-info {
-            margin-bottom: 20px;
-            font-size: 14px;
-            color: #333;
-        }
-
-        .user-info span {
-            font-weight: 600;
-        }
-
-        /* Select dropdown */
-        .select-container {
-            margin-bottom: 20px;
-        }
-
-        .select-container label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        #baseDatosSelect {
-            padding: 10px 16px;
-            font-size: 14px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            width: 100%;
-            max-width: 800px;
-        }
-
-        /* Data table */
-        .table-container {
-            margin-top: 20px;
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-
-        th, td {
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #333;
-        }
-
-        tr:hover {
-            background-color: #f5f5f5;
-        }
-
-        /* Action buttons */
-        .action-buttons {
-            display: grid;
-            grid-template-columns: 160px 160px;
-            gap: 8px;
-        }
-
-        .action-buttons .btn {
-            width: 100%;
-        }
-
-        .action-buttons .btn-reprocesar {
-            grid-column: 2;
-        }
-
-        .btn-actualizar {
-            background-color: #0078d4;
-            color: #ffffff;
-        }
-
-        .btn-actualizar:hover {
-            background-color: #106ebe;
-        }
-
-        .btn-reprocesar {
-            background-color: #ff9800;
-            color: #ffffff;
-        }
-
-        .btn-reprocesar:hover {
-            background-color: #f57c00;
-        }
-
-        .btn:disabled {
-            background-color: #c5c5c5 !important;
-            cursor: not-allowed;
-        }
-
-        /* Row dimming for active executions */
-        tr.row-active-execution {
-            background-color: #fff3cd !important;
-            opacity: 0.75;
-        }
-
-        tr.row-active-execution:hover {
-            background-color: #ffeaa7 !important;
-        }
-
-        /* Disabled button tooltip hint */
-        .btn[disabled] {
-            position: relative;
-        }
-
-        /* Status badge */
-        .status-badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .status-pending {
-            background-color: #fff3cd;
-            color: #856404;
-        }
-
-        .status-running {
-            background-color: #cce5ff;
-            color: #004085;
-        }
-
-        .status-success {
-            background-color: #d4edda;
-            color: #155724;
-        }
-
-        .status-failed {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-
-        /* Tooltip on status hover */
-        .status-badge.has-tooltip {
-            position: relative;
-            cursor: pointer;
-        }
-
-        .status-tooltip {
-            position: fixed;
-            display: none;
-            min-width: 350px;
-            min-height: 350px;
-            max-width: 600px;
-            max-height: 600px;
-            background-color: #333;
-            color: #fff;
-            padding: 24px 32px;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 400;
-            text-transform: none;
-            white-space: pre-wrap;
-            overflow-y: auto;
-            word-wrap: break-word;
-            line-height: 1.5;
-            z-index: 10000;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-        }
-
-        .status-tooltip.visible {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-        }
-
-        /* Loading spinner */
-        .loading {
-            display: none;
-            margin-top: 20px;
-        }
-
-        .loading.visible {
-            display: block;
-        }
-
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #0078d4;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Error message */
-        .error-message {
-            margin-top: 10px;
-            font-size: 13px;
-            color: #d32f2f;
-            min-height: 20px;
-        }
-
-        /* Toast notification */
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            border-radius: 4px;
-            color: #fff;
-            font-size: 14px;
-            z-index: 1000;
-            display: none;
-        }
-
-        .toast.visible {
-            display: block;
-        }
-
-        .toast-success {
-            background-color: #28a745;
-        }
-
-        .toast-error {
-            background-color: #d32f2f;
-        }
-
-        /* Scheduled task toast notification (SignalR) */
-        .scheduled-toast {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 12px 28px;
-            border-radius: 6px;
-            color: #fff;
-            font-size: 14px;
-            font-weight: 500;
-            z-index: 10000;
-            display: none;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-            max-width: 90vw;
-            text-align: center;
-        }
-
-        .scheduled-toast.visible {
-            display: block;
-            animation: fadeInOut 3s ease-in-out;
-        }
-
-        @keyframes fadeInOut {
-            0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-            10% { opacity: 1; transform: translateX(-50%) translateY(0); }
-            80% { opacity: 1; transform: translateX(-50%) translateY(0); }
-            100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-        }
-
-        .scheduled-toast-success {
-            background-color: #28a745;
-        }
-
-        .scheduled-toast-error {
-            background-color: #d32f2f;
-        }
-
-        .scheduled-toast-info {
-            background-color: #0078d4;
-        }
-
-        /* Refresh button */
-        .btn-refresh {
-            background-color: #0078d4;
-            color: #ffffff;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .btn-refresh:hover {
-            background-color: #106ebe;
-        }
-
-        .btn-refresh svg {
-            width: 14px;
-            height: 14px;
-            fill: currentColor;
-        }
-
-        .btn-refresh.spinning svg {
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Toolbar row for refresh button */
-        .toolbar-row {
-            display: flex;
-            justify-content: flex-end;
-            margin-bottom: 16px;
-        }
-    </style>
+    <title>Módulo de Gestión de ETLs - DATAX BOLIVIA Analyse 2.0</title>
+    <link rel="stylesheet" href="styles/index.css">
 </head>
 
 <body>
-    <button class="logout-btn" onclick="logoutAndRedirect()">Cerrar Sesión</button>
-
-    <div class="container">
-        <h1>Ejecucion de ETLs</h1>
-
-        <!-- Navigation -->
-        <div class="nav-bar">
-            <a href="index.html" class="active">Ejecución de ETLs</a>
-            <a id="schedulesNav" href="scheduler.html">Programaciones</a>
+    <!-- Header Bar -->
+    <header class="header-bar">
+        <div class="header-content">
+            <div class="header-left">
+                <div class="logo-container">
+                    <img src="images/logo_datax_bolivia.svg" alt="DATAX BOLIVIA" class="header-logo">
+                    <span class="logo-subtitle">Analyze 2.0</span>
+                </div>
+                <nav class="header-nav">
+                    <a href="index.html" class="active">Ejecución de ETLs</a>
+                    <a id="schedulesNav" href="scheduler.html">Programación de ETLs</a>
+                </nav>
+            </div>
+            <div class="header-right">
+                <span class="user-greeting">Bienvenido, <strong id="userName">Usuario</strong></span>
+                <button class="logout-btn" onclick="logoutAndRedirect()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                    Cerrar Sesión
+                </button>
+            </div>
         </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Page Title -->
+        <h1 class="page-title">Módulo de Gestión de ETLs</h1>
+        <p class="page-subtitle">Administración y monitoreo de flujos de datos empresariales</p>
 
         <!-- ==================== DASHBOARD VIEW ==================== -->
         <div id="dashboardView">
-            <p class="user-info">Bienvenido, <span id="userName"></span></p>
-
-            <!-- Toolbar with refresh button -->
-            <div class="toolbar-row">
-                <button id="refreshBtn" class="btn btn-refresh" onclick="manualRefresh()" disabled>
+            <!-- Database Selector Card -->
+            <div class="card db-selector-card">
+                <div class="db-selector-left">
+                    <label for="baseDatosSelect" class="db-selector-label">Seleccionar Base de Datos</label>
+                    <div class="db-select-wrapper">
+                        <select id="baseDatosSelect" onchange="onBaseDatosSelected()">
+                        </select>
+                    </div>
+                </div>
+                <button id="refreshBtn" class="btn-refresh-datos" onclick="manualRefresh()" disabled>
                     <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
                     </svg>
                     Refrescar
                 </button>
-            </div>
-
-            <!-- Base Datos selector -->
-            <div class="select-container">
-                <label for="baseDatosSelect">Seleccionar Base de Datos:</label>
-                <select id="baseDatosSelect" onchange="onBaseDatosSelected()">
-                </select>
             </div>
 
             <!-- Loading indicator -->
@@ -467,25 +71,33 @@
             <!-- Error message -->
             <div id="errorMessage" class="error-message"></div>
 
-            <!-- Results table -->
-            <div id="tableContainer" class="table-container" style="display: none;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Tipo Entidad</th>
-                            <th>Cod Envio</th>
-                            <th>Fecha</th>
-                            <th>Estado</th>
-                            <th>Tipo de Ejecución</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="resultsBody">
-                    </tbody>
-                </table>
+            <!-- Dual Panel: Table + Status -->
+            <div id="tableContainer" class="dual-panel" style="display: none;">
+                <!-- Left Panel - Main Table -->
+                <div class="panel-left">
+                    <div class="panel-card">
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Tipo Entidad</th>
+                                        <th>Cod Envío</th>
+                                        <th>Fecha</th>
+                                        <th class="center-header">Acciones</th>
+                                        <th class="separator"></th>
+                                        <th>Estado Actual</th>
+                                        <th>Modo Ejecución</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="resultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+    </main>
 
     <!-- Toast notification -->
     <div id="toast" class="toast"></div>
@@ -498,18 +110,18 @@
         // ========================
         let currentCodigo = "";
         let currentIsDayBased = false;
-        let pollingIntervals = {};
+        let batchPollingInterval = null; // Single interval for batch polling all active executions
         let pollingState = {}; // Maps historyId -> { codEnvio, fechadatos } for restart after refresh
         let tableRefreshInProgress = false;
 
         // ========================
-        //  Stop all active polling intervals
+        //  Stop batch polling interval
         // ========================
         function stopAllPolling() {
-            Object.keys(pollingIntervals).forEach(key => {
-                clearInterval(pollingIntervals[key]);
-            });
-            pollingIntervals = {};
+            if (batchPollingInterval) {
+                clearInterval(batchPollingInterval);
+                batchPollingInterval = null;
+            }
         }
 
         // ========================
@@ -534,11 +146,11 @@
             // Set flag to block polling from firing concurrently
             tableRefreshInProgress = true;
 
-            // Save active polling state before clearing intervals
+            // Save active polling state before clearing interval
             // so we can restart polling for in-progress items after refresh
             const savedPollingState = { ...pollingState };
 
-            // Clear all existing polling intervals to prevent stale callbacks
+            // Clear existing batch polling interval to prevent stale callbacks
             // from interfering with the freshly rendered table DOM
             stopAllPolling();
 
@@ -552,19 +164,9 @@
                 renderResultsTable(data);
                 tableContainer.style.display = "block";
 
-                // Restart polling for items that were still in progress
-                for (const [historyId, state] of Object.entries(savedPollingState)) {
-                    try {
-                        const statusRes = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
-                        if (statusRes.ok) {
-                            const statusItem = await statusRes.json();
-                            if (statusItem.status === "PENDIENTE" || statusItem.status === "EN PROCESO") {
-                                startPolling(historyId, state.codEnvio, state.fechadatos);
-                            }
-                        }
-                    } catch {
-                        // If status check fails, skip restarting polling for this item
-                    }
+                // Restart batch polling if any items were still in progress
+                if (Object.keys(savedPollingState).length > 0) {
+                    startBatchPolling();
                 }
             } catch (error) {
                 errorMessage.textContent = `Error refrescando datos: ${error.message}`;
@@ -859,7 +461,7 @@
             tbody.innerHTML = "";
 
             if (!results || results.length === 0) {
-                tbody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>Sin resultados</td></tr>";
+                tbody.innerHTML = "<tr><td colspan='7' style='text-align:center;'>Sin resultados</td></tr>";
                 return;
             }
 
@@ -882,7 +484,54 @@
                 fechadatos.textContent = row.fechadatos ? formatDateYYYYMMDD(row.fechadatos) : "-";
                 tr.appendChild(fechadatos);
 
-                // Status cell - show execution status from query results
+                // Actions cell (position 4 - before status columns)
+                const actionsCell = document.createElement("td");
+                const actionWrapper = document.createElement("div");
+                actionWrapper.className = "action-buttons";
+
+                const canActualizar = currentIsDayBased
+                    ? isCurrentDateGreaterThanFecha(row.fechadatos)
+                    : isCurrentYearMonthGreaterThanFecha(row.fechadatos);
+
+                if (canActualizar) {
+                    const actualizarBtn = document.createElement("button");
+                    actualizarBtn.className = "btn btn-actualizar";
+                    actualizarBtn.textContent = currentIsDayBased
+                        ? getActualizarLabelDayBased(row.fechadatos)
+                        : getActualizarLabel(row.fechadatos);
+                    actualizarBtn.onclick = () => executeAction("Actualizar", row);
+                    if (isActiveExecution) {
+                        actualizarBtn.disabled = true;
+                        actualizarBtn.title = row.estadoEjecucion === "PENDIENTE"
+                            ? "Ejecución pendiente. Espere a que concluya."
+                            : "Ejecución en proceso. Espere a que concluya.";
+                    }
+                    actionWrapper.appendChild(actualizarBtn);
+                }
+
+                const repDocBtn = document.createElement("button");
+                repDocBtn.className = "btn btn-reprocesar";
+                repDocBtn.textContent = currentIsDayBased
+                    ? getReprocesarLabelDayBased(row.fechadatos)
+                    : getReprocesarLabel(row.fechadatos);
+                repDocBtn.onclick = () => executeAction("Reprocesar", row);
+                if (isActiveExecution) {
+                    repDocBtn.disabled = true;
+                    repDocBtn.title = row.estadoEjecucion === "PENDIENTE"
+                        ? "Ejecución pendiente. Espere a que concluya."
+                        : "Ejecución en proceso. Espere a que concluya.";
+                }
+                actionWrapper.appendChild(repDocBtn);
+
+                actionsCell.appendChild(actionWrapper);
+                tr.appendChild(actionsCell);
+
+                // Separator column - empty gap between data and status sections
+                const separatorCell = document.createElement("td");
+                separatorCell.className = "separator";
+                tr.appendChild(separatorCell);
+
+                // Status cell - show execution status from query results (position 6 - status section)
                 const statusCell = document.createElement("td");
                 const statusSpan = document.createElement("span");
                 statusSpan.id = `status-${row.codEnvio}`;
@@ -932,53 +581,11 @@
                 statusCell.appendChild(statusSpan);
                 tr.appendChild(statusCell);
 
-                // TriggerType cell
+                // TriggerType cell (position 6 - status section)
                 const triggerTypeCell = document.createElement("td");
                 triggerTypeCell.id = `triggerType-${row.codEnvio}`;
                 triggerTypeCell.textContent = row.triggerType || "-";
                 tr.appendChild(triggerTypeCell);
-
-                // Actions cell
-                const actionsCell = document.createElement("td");
-                const actionWrapper = document.createElement("div");
-                actionWrapper.className = "action-buttons";
-
-                const canActualizar = currentIsDayBased
-                    ? isCurrentDateGreaterThanFecha(row.fechadatos)
-                    : isCurrentYearMonthGreaterThanFecha(row.fechadatos);
-
-                if (canActualizar) {
-                    const actualizarBtn = document.createElement("button");
-                    actualizarBtn.className = "btn btn-actualizar";
-                    actualizarBtn.textContent = currentIsDayBased
-                        ? getActualizarLabelDayBased(row.fechadatos)
-                        : getActualizarLabel(row.fechadatos);
-                    actualizarBtn.onclick = () => executeAction("Actualizar", row);
-                    if (isActiveExecution) {
-                        actualizarBtn.disabled = true;
-                        actualizarBtn.title = row.estadoEjecucion === "PENDIENTE"
-                            ? "Ejecución pendiente. Espere a que concluya."
-                            : "Ejecución en proceso. Espere a que concluya.";
-                    }
-                    actionWrapper.appendChild(actualizarBtn);
-                }
-
-                const repDocBtn = document.createElement("button");
-                repDocBtn.className = "btn btn-reprocesar";
-                repDocBtn.textContent = currentIsDayBased
-                    ? getReprocesarLabelDayBased(row.fechadatos)
-                    : getReprocesarLabel(row.fechadatos);
-                repDocBtn.onclick = () => executeAction("Reprocesar", row);
-                if (isActiveExecution) {
-                    repDocBtn.disabled = true;
-                    repDocBtn.title = row.estadoEjecucion === "PENDIENTE"
-                        ? "Ejecución pendiente. Espere a que concluya."
-                        : "Ejecución en proceso. Espere a que concluya.";
-                }
-                actionWrapper.appendChild(repDocBtn);
-
-                actionsCell.appendChild(actionWrapper);
-                tr.appendChild(actionsCell);
 
                 // Apply visual indicator for active executions
                 if (isActiveExecution) {
@@ -1016,8 +623,9 @@
                 const data = await res.json();
                 showToast(`Comando encolado. HistoryId: ${data.historyId}`, "success");
 
-                // Start polling for status using HistoryId
-                startPolling(data.historyId, codEnvio, row.fechadatos);
+                // Register this historyId for batch polling and start the batch interval if not running
+                pollingState[data.historyId] = { codEnvio, fechadatos: row.fechadatos };
+                startBatchPolling();
 
             } catch (error) {
                 showToast(`Error: ${error.message}`, "error");
@@ -1025,64 +633,113 @@
         }
 
         // ========================
-        //  Polling for ETLExecutionHistory status
+        //  Batch polling for all active ETLExecutionHistory records
+        //  Makes a single request per interval to reduce database load
         // ========================
-        function startPolling(historyId, codEnvio, fechadatos) {
-            if (pollingIntervals[historyId]) {
-                clearInterval(pollingIntervals[historyId]);
-            }
+        function startBatchPolling() {
+            if (batchPollingInterval) return; // Already running
 
-            // Store state so polling can be restarted after a manual refresh
-            pollingState[historyId] = { codEnvio, fechadatos };
-
-            const interval = setInterval(async () => {
+            batchPollingInterval = setInterval(async () => {
                 // Guard: skip this cycle if manual refresh is in progress
                 if (tableRefreshInProgress) return;
 
                 try {
-                    const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
+                    const res = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/active`);
 
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-                    const item = await res.json();
+                    const items = await res.json();
 
-                    // Determine tooltip content for terminal states
-                    let tooltipContent = "";
-                    if (item.status === "EXITOSO" && item.output) {
-                        tooltipContent = item.output;
-                    } else if (item.status === "FALLIDO" && item.error) {
-                        tooltipContent = item.error;
-                    }
+                    // Build a set of active historyIds from the response
+                    const activeHistoryIds = new Set(items.map(item => item.id));
 
-                    updateStatusBadge(codEnvio, item.status, tooltipContent);
-                    updateFechaCell(codEnvio, item.fechaDatos);
-                    updateTriggerType(codEnvio, item.triggerType);
+                    // Track which historyIds we were polling that are no longer active
+                    const previouslyPolledIds = new Set(Object.keys(pollingState));
 
-                    // Update action buttons if fechaDatos changed
-                    if (item.fechaDatos && item.fechaDatos !== fechadatos) {
-                        fechadatos = item.fechaDatos;
-                        pollingState[historyId] = { codEnvio, fechadatos };
-                        updateActionButtons(codEnvio, item.fechaDatos);
-                    }
+                    for (const item of items) {
+                        const codEnvio = item.codEnvio;
 
-                    // Stop polling when terminal status reached
-                    if (item.status === "EXITOSO" || item.status === "FALLIDO") {
-                        clearInterval(interval);
-                        delete pollingIntervals[historyId];
-                        delete pollingState[historyId];
+                        // Determine tooltip content for terminal states
+                        let tooltipContent = "";
+                        if (item.status === "EXITOSO" && item.output) {
+                            tooltipContent = item.output;
+                        } else if (item.status === "FALLIDO" && item.error) {
+                            tooltipContent = item.error;
+                        }
 
-                        if (item.status === "EXITOSO") {
-                            showToast("Ejecución completada con éxito.", "success");
-                        } else {
-                            showToast(`Ejecución fallida. Error: ${item.error || "Desconocido"}`, "error");
+                        updateStatusBadge(codEnvio, item.status, tooltipContent);
+                        updateFechaCell(codEnvio, item.fechaDatos);
+                        updateTriggerType(codEnvio, item.triggerType);
+
+                        // Update action buttons if fechaDatos changed
+                        const prevState = pollingState[item.id];
+                        if (prevState && item.fechaDatos && item.fechaDatos !== prevState.fechadatos) {
+                            pollingState[item.id] = { codEnvio, fechadatos: item.fechaDatos };
+                            updateActionButtons(codEnvio, item.fechaDatos);
+                        }
+
+                        // Stop polling for this historyId when terminal status reached
+                        if (item.status === "EXITOSO" || item.status === "FALLIDO") {
+                            delete pollingState[item.id];
+
+                            if (item.status === "EXITOSO") {
+                                showToast("Ejecución completada con éxito.", "success");
+                            } else {
+                                showToast(`Ejecución fallida. Error: ${item.error || "Desconocido"}`, "error");
+                            }
                         }
                     }
-                } catch (error) {
-                    console.error("Polling error:", error);
-                }
-            }, 3000);
 
-            pollingIntervals[historyId] = interval;
+                    // Clean up polling state for historyIds no longer in active response
+                    // (they may have reached terminal state between polling cycles)
+                    // Fetch individual status to update UI before removing from polling state
+                    for (const historyId of previouslyPolledIds) {
+                        if (!activeHistoryIds.has(historyId)) {
+                            try {
+                                const statusRes = await authenticatedFetch(`${API_BASE}/api/etlexecutor/status/${historyId}`);
+                                if (statusRes.ok) {
+                                    const finalItem = await statusRes.json();
+                                    const codEnvio = finalItem.codEnvio;
+
+                                    // Determine tooltip content for terminal states
+                                    let tooltipContent = "";
+                                    if (finalItem.status === "EXITOSO" && finalItem.output) {
+                                        tooltipContent = finalItem.output;
+                                    } else if (finalItem.status === "FALLIDO" && finalItem.error) {
+                                        tooltipContent = finalItem.error;
+                                    }
+
+                                    updateStatusBadge(codEnvio, finalItem.status, tooltipContent);
+                                    updateFechaCell(codEnvio, finalItem.fechaDatos);
+                                    updateTriggerType(codEnvio, finalItem.triggerType);
+
+                                    const prevState = pollingState[historyId];
+                                    if (prevState && finalItem.fechaDatos && finalItem.fechaDatos !== prevState.fechadatos) {
+                                        pollingState[historyId] = { codEnvio, fechadatos: finalItem.fechaDatos };
+                                        updateActionButtons(codEnvio, finalItem.fechaDatos);
+                                    }
+
+                                    if (finalItem.status === "EXITOSO") {
+                                        showToast("Ejecución completada con éxito.", "success");
+                                    } else if (finalItem.status === "FALLIDO") {
+                                        showToast(`Ejecución fallida. Error: ${finalItem.error || "Desconocido"}`, "error");
+                                    }
+                                }
+                            } catch (error) {
+                                console.error("Failed to fetch final status for", historyId, error);
+                            }
+                            delete pollingState[historyId];
+                        }
+                    }
+
+                    // Stop batch polling if no more items being tracked
+                    if (Object.keys(pollingState).length === 0) {
+                        stopAllPolling();
+                    }
+                } catch (error) {
+                    console.error("Batch polling error:", error);
+                }
+            }, 5000);
         }
 
         // ========================
@@ -1325,6 +982,9 @@
                 loadBaseDatos();
                 // Schedule auto-refresh for while page is open
                 scheduleAutoRefresh();
+                renderFooter();
+                // Connect to SignalR hub after authentication succeeds
+                connectToNotificationHub();
             } else {
                 clearTokens();
                 window.location.href = "login.html";
@@ -1334,18 +994,27 @@
         // ========================
         //  SignalR - Real-time scheduled task notifications
         // ========================
+        let signalRConnection = null;
+
         function connectToNotificationHub() {
-            const connection = new signalR.HubConnectionBuilder()
-                .withUrl("/etlNotifications")
+            // Stop existing connection before creating a new one to avoid leaks
+            if (signalRConnection) {
+                signalRConnection.stop().catch(err => console.error("Error stopping SignalR connection:", err));
+            }
+
+            signalRConnection = new signalR.HubConnectionBuilder()
+                .withUrl("/etlNotifications", {
+                    accessTokenFactory: () => getAccessToken()
+                })
                 .withAutomaticReconnect()
                 .build();
 
-            connection.on("TaskStarted", (params) => {
+            signalRConnection.on("TaskStarted", (params) => {
                 const shortParams = params ? params.substring(0, 80) + (params.length > 80 ? "..." : "") : "";
                 showScheduledToast(`⏱️  Tarea programada iniciada${shortParams ? ': ' + shortParams : ''}`, "info");
             });
 
-            connection.on("TaskCompleted", (success, params) => {
+            signalRConnection.on("TaskCompleted", (success, params) => {
                 const shortParams = params ? params.substring(0, 80) + (params.length > 80 ? "..." : "") : "";
                 if (success) {
                     showScheduledToast(`✅ Tarea programada completada exitosamente${shortParams ? ': ' + shortParams : ''}`, "success");
@@ -1354,8 +1023,19 @@
                 }
             });
 
-            connection.start().catch(err => console.error("SignalR connection failed:", err));
+            signalRConnection.start()
+                .then(() => console.log("SignalR connected, state:", signalRConnection?.state))
+                .catch(err => console.error("SignalR connection failed:", err));
+
+            signalRConnection.onclose(async (error) => {
+                if (error) {
+                    console.error("SignalR connection closed unexpectedly:", error);
+                }
+            });
         }
+
+        // Reconnect SignalR when token is auto-refreshed
+        setOnTokenRefreshed(() => connectToNotificationHub());
 
         function showScheduledToast(message, type) {
             const toast = document.getElementById("scheduledToast");
@@ -1372,19 +1052,6 @@
             }, 3000);
         }
 
-        // Connect to SignalR hub after authentication
-        const scheduledToastObserver = new MutationObserver(() => {
-            if (document.getElementById("scheduledToast")) {
-                connectToNotificationHub();
-                scheduledToastObserver.disconnect();
-            }
-        });
-        // Try connecting immediately if element exists, otherwise wait
-        if (document.getElementById("scheduledToast")) {
-            connectToNotificationHub();
-        } else {
-            scheduledToastObserver.observe(document.body, { childList: true, subtree: true });
-        }
     </script>
 
     <!-- Scheduled task toast notification -->

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.DTOs;
 using ServicioRESTEjecucionComandos.Interfaces;
@@ -52,18 +53,18 @@ public class AuthService
         {
             _logger.LogWarning("Login attempt for non-existent email: {Email} from IP {ClientIp}", email, clientIp);
 
-            await LogAuditEventAsync("LoginFailed", null, email, clientIp, userAgent,
+            await LogAuditEventAsync(AuditEventType.LoginFailed, null, email, clientIp, userAgent,
                 $"Login failed: User not found with email {email}", false);
 
             return null;
         }
 
         // Validate user state
-        if (user.Userstate != "Activo")
+        if (user.Userstate != UserState.Active)
         {
             _logger.LogWarning("Login attempt for inactive user: {Email} from IP {ClientIp}", email, clientIp);
 
-            await LogAuditEventAsync("LoginFailed", user.Id, email, clientIp, userAgent,
+            await LogAuditEventAsync(AuditEventType.LoginFailed, user.Id, email, clientIp, userAgent,
                 $"Login failed: User {email} is not active (state: {user.Userstate})", false);
 
             return null;
@@ -76,7 +77,7 @@ public class AuthService
         {
             _logger.LogWarning("Invalid password for user: {Email} from IP {ClientIp}", email, clientIp);
 
-            await LogAuditEventAsync("LoginFailed", user.Id, email, clientIp, userAgent,
+            await LogAuditEventAsync(AuditEventType.LoginFailed, user.Id, email, clientIp, userAgent,
                 $"Login failed: Invalid password for user {email}", false);
 
             return null;
@@ -87,7 +88,7 @@ public class AuthService
         {
             _logger.LogWarning("User has no role assigned: {Email}", email);
 
-            await LogAuditEventAsync("LoginFailed", user.Id, email, clientIp, userAgent,
+            await LogAuditEventAsync(AuditEventType.LoginFailed, user.Id, email, clientIp, userAgent,
                 $"Login failed: User {email} has no role assigned", false);
 
             return null;
@@ -101,7 +102,7 @@ public class AuthService
 
         _logger.LogInformation("Successful login for user: {Email} from IP {ClientIp}", email, clientIp);
 
-        await LogAuditEventAsync("LoginSuccess", user.Id, email, clientIp, userAgent,
+        await LogAuditEventAsync(AuditEventType.LoginSuccess, user.Id, email, clientIp, userAgent,
             $"Successful login for user {email}", true);
 
         return new LoginResponse
@@ -124,7 +125,7 @@ public class AuthService
         {
             _logger.LogWarning("Token refresh failed: {Error} from IP {ClientIp}", result.ErrorMessage, clientIp);
 
-            await LogAuditEventAsync("RefreshFailed", null, null, clientIp, userAgent,
+            await LogAuditEventAsync(AuditEventType.RefreshFailed, null, null, clientIp, userAgent,
                 $"Token refresh failed: {result.ErrorMessage}", false);
 
             return null;
@@ -141,18 +142,18 @@ public class AuthService
         {
             _logger.LogWarning("User not found during token refresh for userId: {UserId}", result.UserId);
 
-            await LogAuditEventAsync("RefreshFailed", result.UserId, null, clientIp, userAgent,
+            await LogAuditEventAsync(AuditEventType.RefreshFailed, result.UserId, null, clientIp, userAgent,
                 $"Token refresh failed: User not found", false);
 
             return null;
         }
 
         // Validate user state - deactivated users cannot refresh tokens
-        if (user.Userstate != "Activo")
+        if (user.Userstate != UserState.Active)
         {
             _logger.LogWarning("Token refresh blocked for inactive user: {UserId} from IP {ClientIp}", result.UserId, clientIp);
 
-            await LogAuditEventAsync("RefreshFailed", result.UserId, user.Email, clientIp, userAgent,
+            await LogAuditEventAsync(AuditEventType.RefreshFailed, result.UserId, user.Email, clientIp, userAgent,
                 $"Token refresh blocked: User {user.Email} is not active (state: {user.Userstate})", false);
 
             return null;
@@ -162,7 +163,7 @@ public class AuthService
 
         _logger.LogInformation("Token refresh successful for user: {UserId}", result.UserId);
 
-        await LogAuditEventAsync("RefreshSuccess", result.UserId, user.Email, clientIp, userAgent,
+        await LogAuditEventAsync(AuditEventType.RefreshSuccess, result.UserId, user.Email, clientIp, userAgent,
             $"Token refresh successful for user {user.Email}", true);
 
         return new LoginResponse
@@ -184,14 +185,14 @@ public class AuthService
         {
             _logger.LogInformation("Logout successful from IP {ClientIp}", clientIp);
 
-            await LogAuditEventAsync("Logout", null, null, clientIp, null,
+            await LogAuditEventAsync(AuditEventType.Logout, null, null, clientIp, null,
                 $"Logout successful from IP {clientIp}", true);
         }
         else
         {
             _logger.LogWarning("Logout failed - token not found or already revoked from IP {ClientIp}", clientIp);
 
-            await LogAuditEventAsync("Logout", null, null, clientIp, null,
+            await LogAuditEventAsync(AuditEventType.Logout, null, null, clientIp, null,
                 $"Logout failed: Token not found or already revoked", false);
         }
     }

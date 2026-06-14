@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Repositories;
 
 namespace ServicioRESTEjecucionComandos.Services;
@@ -138,7 +139,7 @@ public class RefreshTokenService
         var auditLog = new AuthAuditLog
         {
             TimestampUtc = DateTime.UtcNow,
-            EventType = "TokenRotated",
+            EventType = AuditEventType.TokenRotated,
             UserId = storedToken.UserId,
             ClientIp = clientIp,
             UserAgent = userAgent,
@@ -187,7 +188,7 @@ public class RefreshTokenService
         var auditLog = new AuthAuditLog
         {
             TimestampUtc = DateTime.UtcNow,
-            EventType = "TokenRevoked",
+            EventType = AuditEventType.TokenRevoked,
             UserId = storedToken.UserId,
             ClientIp = clientIp,
             Message = $"Refresh token revoked for user {storedToken.UserId}",
@@ -215,7 +216,7 @@ public class RefreshTokenService
         var auditLog = new AuthAuditLog
         {
             TimestampUtc = DateTime.UtcNow,
-            EventType = "BulkTokenRevoked",
+            EventType = AuditEventType.BulkTokenRevoked,
             UserId = userId,
             Message = $"All refresh tokens revoked for user {userId} ({count} tokens)",
             Success = true

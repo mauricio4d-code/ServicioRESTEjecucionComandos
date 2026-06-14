@@ -20,10 +20,21 @@ public class AuthDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // SQL Server requires schema-qualified names for reserved keywords like "user"
+        // PostgreSQL and SQLite use default schema, so no schema needed
+        var useDboSchema = Database.IsSqlServer();
+
         // User entity configuration - maps to legacy "user" table
         modelBuilder.Entity<User>(entity =>
         {
-            entity.ToTable("user");
+            if (useDboSchema)
+            {
+                entity.ToTable("user", "dbo");
+            }
+            else
+            {
+                entity.ToTable("user");
+            }
             entity.HasKey(e => e.Id);
 
             entity.Property(e => e.Id).HasColumnName("id");
@@ -45,7 +56,14 @@ public class AuthDbContext : DbContext
         // UserRole entity configuration - maps to legacy "userrole" table
         modelBuilder.Entity<UserRole>(entity =>
         {
-            entity.ToTable("userrole");
+            if (useDboSchema)
+            {
+                entity.ToTable("userrole", "dbo");
+            }
+            else
+            {
+                entity.ToTable("userrole");
+            }
             entity.HasKey(e => e.Id);
 
             entity.Property(e => e.Id).HasColumnName("id");

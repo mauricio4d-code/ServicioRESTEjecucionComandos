@@ -1,0 +1,394 @@
+/* ============================================
+   Scheduler Page Styles
+   Complements styles/index.css design system
+   ============================================ */
+
+/* --- Page Title --- */
+.page-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 4px;
+}
+
+.page-subtitle {
+    font-size: 15px;
+    color: #6b7280;
+    margin-bottom: 24px;
+}
+
+/* --- Toolbar --- */
+.scheduler-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.btn-new-schedule {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background-color: #706ada;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.btn-new-schedule:hover {
+    background-color: #2d2d4a;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.btn-new-schedule svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* --- Table Card Wrapper --- */
+.scheduler-table-card {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+}
+
+/* --- Status Badges --- */
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-active {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.status-inactive {
+    background-color: #fce4ec;
+    color: #c62828;
+}
+
+/* --- Action Icon Buttons --- */
+.action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Center "Creado" and "Acciones" columns (4th and 5th) */
+table thead tr th:nth-child(4),
+table thead tr th:nth-child(5),
+table tbody tr td:nth-child(4),
+table tbody tr td:nth-child(5) {
+    text-align: center;
+}
+
+/* Max width for "Creado" column */
+table thead tr th:nth-child(5),
+table tbody tr td:nth-child(5) {
+    width: 200px;
+    min-width: 150px;
+}
+
+.action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    white-space: nowrap;
+}
+
+.action-btn:active {
+    transform: scale(0.97);
+}
+
+.action-btn svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.action-btn-edit {
+    background-color: #706ada;
+    color: #ffffff;
+}
+
+.action-btn-edit:hover {
+    background-color: #2d2d4a;
+}
+
+.action-btn-toggle {
+    background-color: #e5e7eb;
+    color: #374151;
+}
+
+.action-btn-toggle:hover {
+    background-color: #d1d5db;
+}
+
+.action-btn-delete {
+    background-color: #dc2626;
+    color: #ffffff;
+}
+
+.action-btn-delete:hover {
+    background-color: #b91c1c;
+}
+
+/* --- Modal --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: modalFadeIn 0.2s ease;
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 32px;
+    width: 90%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-content h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* --- Form Groups --- */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="time"],
+.form-group select {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #1f2937;
+    background-color: #ffffff;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.form-group small.help-text {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+/* --- Frequency Section --- */
+.frequency-section {
+    margin-bottom: 20px;
+}
+
+.frequency-section > label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 10px;
+}
+
+.frequency-options {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+.frequency-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 12px;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    background-color: #ffffff;
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+    font-size: 13px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.frequency-card:hover {
+    border-color: #c7d2fe;
+    background-color: #f5f3ff;
+}
+
+.frequency-card.selected {
+    border-color: #6366f1;
+    background-color: #ede9fe;
+    color: #4338ca;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.frequency-card svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* --- Frequency Fields --- */
+.frequency-fields {
+    display: none;
+    padding: 16px;
+    background-color: #f9fafb;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    border: 1px solid #f3f4f6;
+}
+
+.frequency-fields.visible {
+    display: block;
+}
+
+.time-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+/* --- Checkbox Group --- */
+.form-group label.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.form-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #6366f1;
+    cursor: pointer;
+}
+
+/* --- Modal Actions --- */
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.modal-actions .btn-primary {
+    padding: 10px 24px;
+    background-color: #6366f1;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.modal-actions .btn-primary:hover {
+    background-color: #4f46e5;
+}
+
+.modal-actions .btn-secondary {
+    padding: 10px 24px;
+    background-color: #ffffff;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.modal-actions .btn-secondary:hover {
+    background-color: #f9fafb;
+}
+
+/* --- Responsive --- */
+@media (max-width: 640px) {
+    .frequency-options {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .time-row {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-content {
+        padding: 24px;
+        width: 95%;
+    }
+
+    .scheduler-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

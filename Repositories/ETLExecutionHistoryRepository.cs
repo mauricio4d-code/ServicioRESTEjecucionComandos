@@ -1,4 +1,7 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Models;
 
@@ -43,7 +46,7 @@ public class ETLExecutionHistoryRepository
     public async Task<ETLExecutionHistory> CreateAsync(ETLExecutionHistory item)
     {
         item.Id = Guid.NewGuid();
-        item.Status = "PENDIENTE";
+        item.Status = EtlStatus.Pending;
         _logger.LogInformation("Creating new ETLExecutionHistory record in database for Codigo {Codigo}, CodEnvio {CodEnvio}.", item.Codigo, item.CodEnvio);
         await _context.ETLExecutionHistories.AddAsync(item);
         await _context.SaveChangesAsync();
@@ -120,6 +123,20 @@ public class ETLExecutionHistoryRepository
     }
 
     /// <summary>
+    /// Gets all active (PENDIENTE or EN PROCESO) ETLExecutionHistory records.
+    /// Used by the batch status polling endpoint to return all in-progress executions in a single query.
+    /// </summary>
+    public virtual async Task<List<ETLExecutionHistory>> GetAllActiveAsync()
+    {
+        _logger.LogDebug("Querying all active ETLExecutionHistory records from database.");
+        var result = await _context.ETLExecutionHistories
+            .Where(x => x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress)
+            .ToListAsync();
+        _logger.LogDebug("Retrieved {Count} active ETLExecutionHistory records from database.", result.Count);
+        return result;
+    }
+
+    /// <summary>
     /// Gets the first active (PENDIENTE or EN PROCESO) execution for the given CodEnvio and Codigo, if any.
     /// </summary>
     public async Task<ETLExecutionHistory?> GetActiveExecutionAsync(string codEnvio, string codigo)
@@ -128,7 +145,7 @@ public class ETLExecutionHistoryRepository
         var result = await _context.ETLExecutionHistories
             .FirstOrDefaultAsync(x => x.CodEnvio == codEnvio
                 && x.Codigo == codigo
-                && (x.Status == "PENDIENTE" || x.Status == "EN PROCESO"));
+                && (x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress));
         _logger.LogDebug("Active ETLExecutionHistory query for CodEnvio {CodEnvio}, Codigo {Codigo} returned {Found}.", codEnvio, codigo, result != null);
         return result;
     }
@@ -138,6 +155,7 @@ public class ETLExecutionHistoryRepository
     /// Returns the existing active record if found, or the newly created record otherwise.
     /// This eliminates the N+1 check-then-insert pattern by performing both operations
     /// in a single database scope with a single save.
+    /// On unique constraint violation (race condition), re-queries and returns the existing active record.
     /// </summary>
     public virtual async Task<ETLExecutionHistory> UpsertOrGetActiveAsync(
         string codEnvio,
@@ -150,7 +168,7 @@ public class ETLExecutionHistoryRepository
         var existing = await _context.ETLExecutionHistories
             .FirstOrDefaultAsync(x => x.CodEnvio == codEnvio
                 && x.Codigo == codigo
-                && (x.Status == "PENDIENTE" || x.Status == "EN PROCESO"));
+                && (x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress));
 
         if (existing != null)
         {
@@ -169,19 +187,73 @@ public class ETLExecutionHistoryRepository
             TipoEntidad = tipoEntidad,
             FechaDatos = fechaDatos,
             Codigo = codigo,
-            Status = "PENDIENTE",
+            Status = EtlStatus.Pending,
             TriggerType = triggerType
         };
 
         _logger.LogInformation(
             "Creating new ETLExecutionHistory record in database for Codigo {Codigo}, CodEnvio {CodEnvio}.",
             codigo, codEnvio);
-        await _context.ETLExecutionHistories.AddAsync(history);
-        await _context.SaveChangesAsync();
-        _logger.LogInformation(
-            "ETLExecutionHistory record created in database with Id {HistoryId} and status PENDIENTE.",
-            history.Id);
-        return history;
+
+        try
+        {
+            await _context.ETLExecutionHistories.AddAsync(history);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation(
+                "ETLExecutionHistory record created in database with Id {HistoryId} and status PENDIENTE.",
+                history.Id);
+            return history;
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            _logger.LogWarning(ex,
+                "Unique constraint violation creating ETLExecutionHistory for CodEnvio={CodEnvio}, Codigo={Codigo}. " +
+                "Another concurrent request created it first. Re-querying for existing active record.",
+                codEnvio, codigo);
+
+            // Re-query to get the record created by the other request
+            var concurrentRecord = await _context.ETLExecutionHistories
+                .FirstOrDefaultAsync(x => x.CodEnvio == codEnvio
+                    && x.Codigo == codigo
+                    && (x.Status == EtlStatus.Pending || x.Status == EtlStatus.InProgress));
+
+            if (concurrentRecord != null)
+            {
+                _logger.LogInformation(
+                    "Returning existing active ETLExecutionHistory with Id {HistoryId} after constraint violation.",
+                    concurrentRecord.Id);
+                return concurrentRecord;
+            }
+
+            // If we still can't find it, re-throw the original exception
+            _logger.LogError(ex,
+                "Unique constraint violation for CodEnvio={CodEnvio}, Codigo={Codigo}, but no active record found after re-query.",
+                codEnvio, codigo);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Determines if the given exception represents a unique constraint violation.
+    /// Handles PostgreSQL (SQL state 23505), SQL Server (error 2601/2627), and generic EF Core violations.
+    /// </summary>
+    private static bool IsUniqueConstraintViolation(Microsoft.EntityFrameworkCore.DbUpdateException ex)
+    {
+        var inner = ex.InnerException;
+        if (inner == null)
+            return false;
+
+        // PostgreSQL: SQL state 23505 = unique_violation
+        if (inner is Npgsql.PostgresException pgEx && pgEx.SqlState == "23505")
+            return true;
+
+        // SQL Server: error codes 2601 (duplicate key) or 2627 (unique constraint violation)
+        if (inner is Microsoft.Data.SqlClient.SqlException sqlEx && (sqlEx.Number == 2601 || sqlEx.Number == 2627))
+            return true;
+
+        // SQLite / InMemory: check message for common unique constraint patterns
+        var message = inner.Message.ToLowerInvariant();
+        return message.Contains("unique") || message.Contains("duplicate");
     }
 
     /// <summary>

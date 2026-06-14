@@ -1,3 +1,5 @@
+using ServicioRESTEjecucionComandos.Constants;
+
 namespace ServicioRESTEjecucionComandos.Models;
 
 /// <summary>
@@ -34,12 +36,12 @@ public class ETLExecutionHistory
     /// <summary>
     /// Current execution status: PENDIENTE, EN PROCESO, EXITOSO, FALLIDO.
     /// </summary>
-    public string Status { get; set; } = "PENDIENTE";
+    public string Status { get; set; } = EtlStatus.Pending;
 
     /// <summary>
     /// Trigger type that initiated this execution: MANUAL, PROGRAMADO, REPROCESO.
     /// </summary>
-    public string TriggerType { get; set; } = "MANUAL";
+    public string TriggerType { get; set; } = Constants.TriggerType.Manual;
 
     /// <summary>
     /// Exit code from the command execution.

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Models;
 using ServicioRESTEjecucionComandos.Services;
 using Xunit;
@@ -29,7 +30,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Output 'Hello World'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -55,7 +56,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = string.Empty,
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -80,7 +81,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = null,
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -105,7 +106,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"exit 1\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -130,7 +131,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -156,7 +157,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Error 'Test error' -WarningAction SilentlyContinue; exit 1\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -181,7 +182,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Output 'First'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         var item2 = new ExecutionQueueItem
@@ -189,7 +190,7 @@ public class CommandExecutorTests
             Id = Guid.NewGuid(),
             HistoryId = Guid.NewGuid(),
             Params = "-Command \"Write-Output 'Second'\"",
-            Status = "PENDIENTE"
+            Status = EtlStatus.Pending
         };
 
         // Act
@@ -203,5 +204,89 @@ public class CommandExecutorTests
         result2.Success.Should().BeTrue();
         result1.Output.Should().Contain("First");
         result2.Output.Should().Contain("Second");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_MultiLineOutput_ShouldReturnOnlyLastLine()
+    {
+        // Arrange
+        var executor = new CommandExecutor(
+            "powershell.exe",
+            _loggerMock.Object);
+
+        var marker = "END_MARKER";
+        var item = new ExecutionQueueItem
+        {
+            Id = Guid.NewGuid(),
+            HistoryId = Guid.NewGuid(),
+            Params = $"-Command \"Write-Output 'Line1'; Write-Output 'Line2'; Write-Output '{marker}'\"",
+            Status = EtlStatus.Pending
+        };
+
+        // Act
+        var result = await executor.ExecuteAsync(item);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Success.Should().BeTrue();
+        result.ExitCode.Should().Be(0);
+        // Output should be exactly the last line
+        result.Output.Should().Be(marker);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OutputContainsGenericErrorPattern_ShouldReturnGenericErrorMessage()
+    {
+        // Arrange
+        var executor = new CommandExecutor(
+            "powershell.exe",
+            _loggerMock.Object);
+
+        // Output contains "error:" but not the specific patterns (Unauthorized / No API key)
+        var item = new ExecutionQueueItem
+        {
+            Id = Guid.NewGuid(),
+            HistoryId = Guid.NewGuid(),
+            Params = "-Command \"Write-Output 'error: Something unexpected happened'\"",
+            Status = EtlStatus.Pending
+        };
+
+        // Act
+        var result = await executor.ExecuteAsync(item);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Success.Should().BeFalse();
+        result.ExitCode.Should().Be(-1);
+        result.Error.Should().Be("Ocurrio un error durante la ejecucion del ETL.");
+        result.Output.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ErrorStreamContainsGenericErrorPattern_ShouldReturnGenericErrorMessage()
+    {
+        // Arrange
+        var executor = new CommandExecutor(
+            "powershell.exe",
+            _loggerMock.Object);
+
+        // Write to stderr using Write-Warning (redirected to stderr)
+        var item = new ExecutionQueueItem
+        {
+            Id = Guid.NewGuid(),
+            HistoryId = Guid.NewGuid(),
+            Params = "-Command \"Write-Warning 'error: Database connection failed'\"",
+            Status = EtlStatus.Pending
+        };
+
+        // Act
+        var result = await executor.ExecuteAsync(item);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Success.Should().BeFalse();
+        result.ExitCode.Should().Be(-1);
+        result.Error.Should().Be("Ocurrio un error durante la ejecucion del ETL.");
+        result.Output.Should().BeEmpty();
     }
 }

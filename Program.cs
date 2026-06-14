@@ -4,9 +4,11 @@ using System.Net.Sockets;
 using System.Text;
 using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using ServicioRESTEjecucionComandos.Constants;
 using ServicioRESTEjecucionComandos.Data;
 using ServicioRESTEjecucionComandos.Interfaces;
 using ServicioRESTEjecucionComandos.Repositories;
@@ -88,14 +90,14 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 
     switch (authenticationProvider.ToLower())
     {
-        case "postgres":
-        case "postgresql":
+        case DbProvider.Postgres:
+        case DbProvider.PostgreSQL:
             options.UseNpgsql(authConnectionString);
             break;
-        case "sqlserver":
+        case DbProvider.SqlServer:
             options.UseSqlServer(authConnectionString);
             break;
-        case "sqlite":
+        case DbProvider.Sqlite:
         default:
             options.UseSqlite(authConnectionString);
             break;
@@ -119,14 +121,14 @@ builder.Services.AddDbContext<ServiceDbContext>(options =>
 
     switch (serviceDbProvider.ToLower())
     {
-        case "postgres":
-        case "postgresql":
+        case DbProvider.Postgres:
+        case DbProvider.PostgreSQL:
             options.UseNpgsql(serviceConnectionString);
             break;
-        case "sqlserver":
+        case DbProvider.SqlServer:
             options.UseSqlServer(serviceConnectionString);
             break;
-        case "sqlite": // Added SQLite option for service database to allow full in-memory testing and simpler local development without needing PostgreSQL or SQL Server.
+        case DbProvider.Sqlite: // NO NOT ADD THIS TO README, this is only for testing and local development convenience, not intended for production use.
             options.UseSqlite(serviceConnectionString);
             break;
         default:
@@ -152,7 +154,7 @@ builder.Services.AddScoped<AuthAuditLogRepository>();
 builder.Services.AddScoped<ETLExecutionHistoryRepository>();
 builder.Services.AddScoped<EtlScheduleRepository>();
 builder.Services.AddScoped<ETLExecutionHistoryScheduledRepository>();
-builder.Services.AddScoped<ServiceRestartLogRepository>();
+builder.Services.AddScoped<DtxProcessRepository>();
 
 // -----------------------------------------------------------------------
 // Service registrations
@@ -169,6 +171,32 @@ builder.Services.AddSingleton<IPasswordValidator, LegacyPasswordValidator>();
 
 // Add controllers
 builder.Services.AddControllers();
+
+// -----------------------------------------------------------------------
+// Rate Limiting configuration (protects login endpoint from brute-force)
+// -----------------------------------------------------------------------
+var rateLimitingConfig = builder.Configuration.GetSection("RateLimiting:LoginPolicy");
+builder.Services.AddRateLimiter(options =>
+{
+    var windowSeconds = rateLimitingConfig.GetValue<int>("WindowSeconds", 60);
+    var maxRequests = rateLimitingConfig.GetValue<int>("MaxRequests", 5);
+
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            "{\"error\":\"Demasiadas Peticiones\",\"message\":\"Se han realizado demasiados intentos de inicio de sesión. Inténtelo de nuevo más tarde.\"}",
+            token);
+    };
+
+    options.AddFixedWindowLimiter(policyName: "LoginPolicy", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = maxRequests;
+        limiterOptions.Window = TimeSpan.FromSeconds(windowSeconds);
+        limiterOptions.QueueLimit = 0;
+    });
+});
 
 // Register CommandExecutor as singleton (parameters are now per-item, not static)
 builder.Services.AddSingleton<CommandExecutor>(sp =>
@@ -255,8 +283,27 @@ builder.Services.AddAuthentication(options =>
     // Allow extraction of token from Authorization header
     options.Events = new JwtBearerEvents
     {
+        // Extract token from query string for SignalR negotiate requests
+        // SignalR client's withAccessTokenFactory() sends token as "access_token" query param
+        OnMessageReceived = context =>
+        {
+            if (context.Request.Path.StartsWithSegments("/etlNotifications")
+                && context.Request.Query.ContainsKey("access_token"))
+            {
+                context.Token = context.Request.Query["access_token"];
+            }
+            return Task.CompletedTask;
+        },
+
         OnChallenge = context =>
         {
+            // Skip custom JSON response for SignalR negotiation requests
+            // to allow SignalR client to receive proper 401 and handle disconnect
+            if (context.Request.Path.StartsWithSegments("/etlNotifications"))
+            {
+                return Task.CompletedTask;
+            }
+
             context.HandleResponse();
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             context.Response.ContentType = "application/json";
@@ -268,8 +315,8 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("AdminOnly", policy =>
-        policy.RequireClaim(System.Security.Claims.ClaimTypes.Role, "Administrador", "Administador"));
+    options.AddPolicy(Policy.AdminOnly, policy =>
+        policy.RequireClaim(System.Security.Claims.ClaimTypes.Role, Role.Administrador, Role.AdministadorTypo));
 });
 
 var app = builder.Build();
@@ -333,10 +380,10 @@ using (var scope = app.Services.CreateScope())
         string createTableSql;
         string createIndexSql;
 
-        if (serviceDbProvider.ToLower() == "sqlserver")
+        if (serviceDbProvider.ToLower() == DbProvider.SqlServer)
         {
             // SQL Server syntax
-            createTableSql = @"
+            createTableSql = $@"
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'hist_etl_execution')
                 BEGIN
                     CREATE TABLE [hist_etl_execution] (
@@ -345,8 +392,8 @@ using (var scope = app.Services.CreateScope())
                         [TipoEntidad] NVARCHAR(50) NOT NULL,
                         [FechaDatos] DATE NOT NULL,
                         [Codigo] NVARCHAR(50) NOT NULL,
-                        [Status] NVARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
-                        [TriggerType] NVARCHAR(20) NOT NULL DEFAULT 'MANUAL',
+                        [Status] NVARCHAR(20) NOT NULL DEFAULT '{EtlStatus.Pending}',
+                        [TriggerType] NVARCHAR(20) NOT NULL DEFAULT '{TriggerType.Manual}',
                         [ExitCode] INT,
                         [Output] NVARCHAR(MAX),
                         [Error] NVARCHAR(MAX),
@@ -358,18 +405,18 @@ using (var scope = app.Services.CreateScope())
                 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_Status')
                     CREATE INDEX [IX_hist_etl_execution_Status] ON [hist_etl_execution] ([Status]);";
         }
-        else if (serviceDbProvider.ToLower() == "sqlite")
+        else if (serviceDbProvider.ToLower() == DbProvider.Sqlite)
         {
             // SQLite syntax
-            createTableSql = @"
+            createTableSql = $@"
                 CREATE TABLE IF NOT EXISTS ""hist_etl_execution"" (
                     ""Id"" TEXT PRIMARY KEY,
                     ""CodEnvio"" TEXT NOT NULL,
                     ""TipoEntidad"" TEXT NOT NULL,
                     ""FechaDatos"" TEXT NOT NULL,
                     ""Codigo"" TEXT NOT NULL,
-                    ""Status"" TEXT NOT NULL DEFAULT 'PENDIENTE',
-                    ""TriggerType"" TEXT NOT NULL DEFAULT 'MANUAL',
+                    ""Status"" TEXT NOT NULL DEFAULT '{EtlStatus.Pending}',
+                    ""TriggerType"" TEXT NOT NULL DEFAULT '{TriggerType.Manual}',
                     ""ExitCode"" INTEGER,
                     ""Output"" TEXT,
                     ""Error"" TEXT,
@@ -384,15 +431,15 @@ using (var scope = app.Services.CreateScope())
             // PostgreSQL syntax (default)
             serviceDbContext.Database.ExecuteSqlRaw(@"CREATE EXTENSION IF NOT EXISTS pgcrypto;");
 
-            createTableSql = @"
+            createTableSql = $@"
                 CREATE TABLE IF NOT EXISTS ""hist_etl_execution"" (
                     ""Id"" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     ""CodEnvio"" VARCHAR(50) NOT NULL,
                     ""TipoEntidad"" VARCHAR(50) NOT NULL,
                     ""FechaDatos"" DATE NOT NULL,
                     ""Codigo"" VARCHAR(50) NOT NULL,
-                    ""Status"" VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
-                    ""TriggerType"" VARCHAR(20) NOT NULL DEFAULT 'MANUAL',
+                    ""Status"" VARCHAR(20) NOT NULL DEFAULT '{EtlStatus.Pending}',
+                    ""TriggerType"" VARCHAR(20) NOT NULL DEFAULT '{TriggerType.Manual}',
                     ""ExitCode"" INTEGER,
                     ""Output"" TEXT,
                     ""Error"" TEXT,
@@ -406,21 +453,40 @@ using (var scope = app.Services.CreateScope())
         serviceDbContext.Database.ExecuteSqlRaw(createTableSql);
         serviceDbContext.Database.ExecuteSqlRaw(createIndexSql);
 
+        // Create unique partial index to prevent duplicate active executions for the same CodEnvio+Codigo.
+        // This eliminates the race condition in UpsertOrGetActiveAsync by enforcing uniqueness at the DB level.
+        // SQLite does not support partial indexes, so it is skipped (catch-and-retry in the repository handles it).
+        if (serviceDbProvider.ToLower() == DbProvider.SqlServer)
+        {
+            serviceDbContext.Database.ExecuteSqlRaw($@"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_unique_active')
+                    CREATE UNIQUE INDEX [IX_hist_etl_execution_unique_active] ON [hist_etl_execution] ([CodEnvio], [Codigo])
+                    WHERE [Status] IN ('{EtlStatus.Pending}', '{EtlStatus.InProgress}');");
+        }
+        else if (serviceDbProvider.ToLower() != DbProvider.Sqlite)
+        {
+            // PostgreSQL syntax (default)
+            serviceDbContext.Database.ExecuteSqlRaw($@"
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_hist_etl_execution_unique_active""
+                    ON ""hist_etl_execution"" (""CodEnvio"", ""Codigo"")
+                    WHERE ""Status"" IN ('{EtlStatus.Pending}', '{EtlStatus.InProgress}');");
+        }
+
         // Create hist_etl_execution_scheduled table
         string createScheduledTableSql;
         string createScheduledIndexSql;
 
-        if (serviceDbProvider.ToLower() == "sqlserver")
+        if (serviceDbProvider.ToLower() == DbProvider.SqlServer)
         {
             // SQL Server syntax
-            createScheduledTableSql = @"
+            createScheduledTableSql = $@"
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'hist_etl_execution_scheduled')
                 BEGIN
                     CREATE TABLE [hist_etl_execution_scheduled] (
                         [Id] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
                         [ScheduleId] UNIQUEIDENTIFIER NOT NULL,
                         [Params] NVARCHAR(MAX),
-                        [Status] NVARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                        [Status] NVARCHAR(20) NOT NULL DEFAULT '{EtlStatus.Pending}',
                         [ExitCode] INT,
                         [Output] NVARCHAR(MAX),
                         [Error] NVARCHAR(MAX),
@@ -435,15 +501,15 @@ using (var scope = app.Services.CreateScope())
                 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_hist_etl_execution_scheduled_Status')
                     CREATE INDEX [IX_hist_etl_execution_scheduled_Status] ON [hist_etl_execution_scheduled] ([Status]);";
         }
-        else if (serviceDbProvider.ToLower() == "sqlite")
+        else if (serviceDbProvider.ToLower() == DbProvider.Sqlite)
         {
             // SQLite syntax
-            createScheduledTableSql = @"
+            createScheduledTableSql = $@"
                 CREATE TABLE IF NOT EXISTS ""hist_etl_execution_scheduled"" (
                     ""Id"" TEXT PRIMARY KEY,
                     ""ScheduleId"" TEXT NOT NULL,
                     ""Params"" TEXT,
-                    ""Status"" TEXT NOT NULL DEFAULT 'PENDIENTE',
+                    ""Status"" TEXT NOT NULL DEFAULT '{EtlStatus.Pending}',
                     ""ExitCode"" INTEGER,
                     ""Output"" TEXT,
                     ""Error"" TEXT,
@@ -458,12 +524,12 @@ using (var scope = app.Services.CreateScope())
         else
         {
             // PostgreSQL syntax (default)
-            createScheduledTableSql = @"
+            createScheduledTableSql = $@"
                 CREATE TABLE IF NOT EXISTS ""hist_etl_execution_scheduled"" (
                     ""Id"" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     ""ScheduleId"" UUID NOT NULL,
                     ""Params"" TEXT,
-                    ""Status"" VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                    ""Status"" VARCHAR(20) NOT NULL DEFAULT '{EtlStatus.Pending}',
                     ""ExitCode"" INTEGER,
                     ""Output"" TEXT,
                     ""Error"" TEXT,
@@ -485,27 +551,6 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "An error occurred creating the Service database schema.");
     }
 
-    // Create service_restart_log table in SQLite (tracks Windows service restart history)
-    try
-    {
-        var refreshTokenDbContext = services.GetRequiredService<RefreshTokenDbContext>();
-        refreshTokenDbContext.Database.ExecuteSqlRaw(@"
-            CREATE TABLE IF NOT EXISTS ""service_restart_log"" (
-                ""Id"" INTEGER PRIMARY KEY AUTOINCREMENT,
-                ""ServiceName"" TEXT NOT NULL,
-                ""RestartedAt"" TEXT NOT NULL,
-                ""Status"" TEXT NOT NULL
-            );
-        ");
-        refreshTokenDbContext.Database.ExecuteSqlRaw(@"
-            CREATE INDEX IF NOT EXISTS ""IX_service_restart_log_ServiceName"" ON ""service_restart_log"" (""ServiceName"");
-        ");
-        logger.LogInformation("Service restart log table ensured (service_restart_log created if not exists).");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred creating the service_restart_log table.");
-    }
 }
 
 // Configure the HTTP request pipeline
@@ -520,6 +565,9 @@ app.UseStaticFiles();
 // Authentication + Authorization middleware must come BEFORE endpoint routing
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Rate limiting middleware must come BEFORE endpoint routing
+app.UseRateLimiter();
 
 // Redirect root path to index.html
 app.MapGet("/", () => Results.Redirect("/index.html"));
@@ -601,6 +649,16 @@ else
     accessibleAddresses = new[] { configuredUrl };
 }
 
+// ServiceRestart configuration
+var restartServiceName = builder.Configuration.GetValue<string>("ServiceRestart:WindowsServiceName");
+var restartCheckInterval = builder.Configuration.GetValue<int>("ServiceRestart:CheckIntervalMinutes");
+var restartRunningMinutesThreshold = builder.Configuration.GetValue<int>("ServiceRestart:RunningMinutesThreshold");
+var processCheckWaitSeconds = builder.Configuration.GetValue<int>("QueueConfig:ProcessCheckWaitSeconds");
+startupLogger.LogInformation("  ServiceRestart.ServiceName:             {Service}", string.IsNullOrEmpty(restartServiceName) ? "(not configured)" : restartServiceName);
+startupLogger.LogInformation("  ServiceRestart.CheckInterval:           {Minutes} min", restartCheckInterval);
+startupLogger.LogInformation("  ServiceRestart.RunningMinutesThreshold: {Minutes} min", restartRunningMinutesThreshold);
+startupLogger.LogInformation("  QueueConfig.ProcessCheckWaitSeconds:    {Seconds} s", processCheckWaitSeconds);
+
 startupLogger.LogInformation("============================================");
 startupLogger.LogInformation("Configuration Summary:");
 startupLogger.LogInformation("  QueueConfig.DailyCodes:        [{Codes}]", string.Join(", ", dailyCodes));
@@ -612,13 +670,6 @@ startupLogger.LogInformation("  Jwt.RefreshTokenDays:          {Days}", refreshT
 startupLogger.LogInformation("  RefreshTokenCleanup.Interval:  {Minutes} min", cleanupIntervalMinutes);
 startupLogger.LogInformation("  RefreshTokenCleanup.Retention: {Days} days", auditLogRetentionDays);
 
-// ServiceRestart configuration
-var restartServiceName = builder.Configuration.GetValue<string>("ServiceRestart:WindowsServiceName");
-var restartCheckInterval = builder.Configuration.GetValue<int>("ServiceRestart:CheckIntervalMinutes");
-var restartMinMargin = builder.Configuration.GetValue<int>("ServiceRestart:MinRestartMarginMinutes");
-startupLogger.LogInformation("  ServiceRestart.ServiceName:    {Service}", string.IsNullOrEmpty(restartServiceName) ? "(not configured)" : restartServiceName);
-startupLogger.LogInformation("  ServiceRestart.CheckInterval:  {Minutes} min", restartCheckInterval);
-startupLogger.LogInformation("  ServiceRestart.MinMargin:      {Minutes} min", restartMinMargin);
 startupLogger.LogInformation("============================================");
 startupLogger.LogInformation("ServicioRESTEjecucionComandos is running!");
 startupLogger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);

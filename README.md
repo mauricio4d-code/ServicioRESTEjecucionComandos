@@ -302,6 +302,143 @@ Para validar la conectividad desde otra máquina de la red:
 Test-NetConnection IP_DEL_SERVIDOR -Port 5000
 ```
 
+## Resumen de Configuración al Inicio
+
+Al iniciar el servicio, se imprime un resumen de configuración en los logs que incluye los valores activos de:
+
+| Parámetro | Descripción |
+|-----------|-------------|
+| `QueueConfig:DailyCodes` | Códigos diarios permitidos |
+| `QueueConfig:ExcludedCodes` | Códigos excluidos de la cola |
+| `ServiceDb:Provider` | Proveedor de base de datos para ETL (PostgreSQL/SQL Server/SQLite) |
+| `Authentication:Provider` | Proveedor de base de datos para autenticación (PostgreSQL/SQL Server/SQLite) |
+| `Jwt:AccessTokenMinutes` | Duración del token de acceso |
+| `Jwt:RefreshTokenDays` | Duración del token de refresco |
+| `RefreshTokenCleanup:CleanupIntervalMinutes` | Intervalo de limpieza de tokens |
+| `RefreshTokenCleanup:AuditLogRetentionDays` | Retención de logs de auditoría |
+| `ServiceRestart:WindowsServiceName` | Nombre del servicio Windows a monitorear |
+| `ServiceRestart:CheckIntervalMinutes` | Intervalo de verificación del servicio |
+| `ServiceRestart:RunningMinutesThreshold` | Umbral de tiempo de ejecución para reinicio |
+| `QueueConfig:ProcessCheckWaitSeconds` | Tiempo de espera para verificación de proceso |
+
+El servicio también resuelve las direcciones IP accesibles cuando Kestrel está vinculado a `0.0.0.0`, mostrando todas las URLs disponibles en la red local.
+
+---
+
+## Publicación Autocontenida
+
+Para generar un despliegue autocontenido (sin requerir el SDK de .NET en el servidor destino), use el comando `dotnet publish` con la opción `--self-contained`. Esto empaqueta el runtime de .NET junto con la aplicación, produciendo un directorio ejecutable de forma independiente.
+
+### PowerShell y CMD (Command Prompt)
+
+```powershell
+# Publicar como autocontenido para Windows x64
+dotnet publish ServicioRESTEjecucionComandos.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
+
+# Ejecutar el servicio publicado
+.\publish\ServicioRESTEjecucionComandos.exe
+```
+
+### Opciones de Publicación
+
+| Opción | Descripción | Valor por Defecto |
+|--------|-------------|-------------------|
+| `-c Release` | Configuración de compilación optimizada | `Debug` |
+| `-r win-x64` | Identificador de runtime destino | `win-x64` (definido en `.csproj`) |
+| `--self-contained` | Incluye el runtime de .NET en el paquete | No incluido |
+| `-o ./publish` | Directorio de salida | `bin/Release/net8.0/win-x64/publish` |
+
+---
+
+## Soporte Docker
+
+El proyecto incluye un [`Dockerfile`](Dockerfile) para construir una imagen del servicio y un [`docker-compose.yml`](docker-compose.yml) que orquesta el servicio junto con **Uptime Kuma** para monitoreo de salud.
+
+### Construir la imagen
+
+```bash
+docker build -t servicio-rest-ejecucion-comandos .
+```
+
+### Ejecutar con Docker Compose
+
+```bash
+docker-compose up -d
+```
+
+El archivo `docker-compose.yml` configura:
+- **Servicio principal:** Expone el puerto 5000 con las variables de entorno necesarias
+- **Uptime Kuma:** Monitor de salud con interfaz web en el puerto 3001, configurado para verificar el endpoint `/api/health` del servicio
+
+### Variables de entorno en Docker
+
+Las variables de entorno se pasan mediante la sección `environment` de `docker-compose.yml`, incluyendo:
+- `ASPNETCORE_ENVIRONMENT`
+- `ServiceDb__Provider` / `ServiceDb__ConnectionString`
+- `Authentication__Provider` / `Authentication__ConnectionString`
+- `Jwt__SecretKey`
+- `QueueConfig__ExePath`
+
+---
+
+## Monitoreo de Salud
+
+El servicio expone un endpoint de health checks en `/api/health` (sin autenticación) que reporta el estado de los siguientes componentes:
+
+| Health Check | Nombre | Tags | Descripción |
+|---|---|---|---|
+| [`AuthDbHealthCheck`](HealthChecks/AuthDbHealthCheck.cs) | `auth_database` | `database` | Verifica conectividad a la base de datos legacy |
+| [`ServiceDbHealthCheck`](HealthChecks/ServiceDbHealthCheck.cs) | `service_database` | `database` | Verifica conectividad a la base de datos de servicio |
+| [`SqliteDbHealthCheck`](HealthChecks/SqliteDbHealthCheck.cs) | `sqlite_database` | `database` | Verifica conectividad a la base de datos SQLite |
+| [`HangfireHealthCheck`](HealthChecks/HangfireHealthCheck.cs) | `hangfire` | `background-jobs` | Verifica que Hangfire esté operativo |
+| [`UptimeHealthCheck`](HealthChecks/UptimeHealthCheck.cs) | `uptime` | `system` | Reporta uptime y uso de memoria |
+
+**Respuesta de ejemplo:**
+```json
+{
+  "status": "Healthy",
+  "timestamp": "2026-06-11T08:00:00Z",
+  "components": {
+    "auth_database": {
+      "status": "Healthy",
+      "description": "Auth database connection OK",
+      "data": { "database": "AuthDatabase", "provider": "Microsoft.EntityFrameworkCore.Sqlite" }
+    },
+    "service_database": {
+      "status": "Healthy",
+      "description": "Service database connection OK",
+      "data": { "database": "ServiceDatabase", "provider": "Microsoft.EntityFrameworkCore.PostgreSQL" }
+    },
+    "sqlite_database": {
+      "status": "Healthy",
+      "description": "SQLite database connection OK",
+      "data": { "database": "RefreshTokenDatabase" }
+    },
+    "hangfire": {
+      "status": "Healthy",
+      "description": "Hangfire server is running",
+      "data": {}
+    },
+    "uptime": {
+      "status": "Healthy",
+      "description": "Service running for 01:23:45",
+      "data": { "uptime_seconds": 5025, "memory_mb": 45.2 }
+    }
+  }
+}
+```
+
+Además del endpoint `/api/health`, el proyecto incluye [`Monitor-Health.ps1`](Monitor-Health.ps1), un script de PowerShell para verificar el estado del servicio de forma remota:
+
+```powershell
+.\Monitor-Health.ps1 -Url "http://localhost:5000/api/health"
+```
+
+El script verifica:
+- Conectividad HTTP al endpoint de salud
+- Estado de los componentes (base de datos, Hangfire, tiempo de actividad)
+- Respuesta JSON detallada con el estado de cada componente
+
 ---
 
 ## Sistemas de Logging
@@ -619,55 +756,6 @@ Activa o desactiva una programación sin eliminarla.
 
 ---
 
-## Health Checks
-
-El servicio expone un endpoint de health checks en `/api/health` (sin autenticación) que reporta el estado de los siguientes componentes:
-
-| Health Check | Nombre | Tags | Descripción |
-|---|---|---|---|
-| [`AuthDbHealthCheck`](HealthChecks/AuthDbHealthCheck.cs) | `auth_database` | `database` | Verifica conectividad a la base de datos legacy |
-| [`ServiceDbHealthCheck`](HealthChecks/ServiceDbHealthCheck.cs) | `service_database` | `database` | Verifica conectividad a la base de datos de servicio |
-| [`SqliteDbHealthCheck`](HealthChecks/SqliteDbHealthCheck.cs) | `sqlite_database` | `database` | Verifica conectividad a la base de datos SQLite |
-| [`HangfireHealthCheck`](HealthChecks/HangfireHealthCheck.cs) | `hangfire` | `background-jobs` | Verifica que Hangfire esté operativo |
-| [`UptimeHealthCheck`](HealthChecks/UptimeHealthCheck.cs) | `uptime` | `system` | Reporta uptime y uso de memoria |
-
-**Respuesta de ejemplo:**
-```json
-{
-  "status": "Healthy",
-  "timestamp": "2026-06-11T08:00:00Z",
-  "components": {
-    "auth_database": {
-      "status": "Healthy",
-      "description": "Auth database connection OK",
-      "data": { "database": "AuthDatabase", "provider": "Microsoft.EntityFrameworkCore.Sqlite" }
-    },
-    "service_database": {
-      "status": "Healthy",
-      "description": "Service database connection OK",
-      "data": { "database": "ServiceDatabase", "provider": "Microsoft.EntityFrameworkCore.PostgreSQL" }
-    },
-    "sqlite_database": {
-      "status": "Healthy",
-      "description": "SQLite database connection OK",
-      "data": { "database": "RefreshTokenDatabase" }
-    },
-    "hangfire": {
-      "status": "Healthy",
-      "description": "Hangfire server is running",
-      "data": {}
-    },
-    "uptime": {
-      "status": "Healthy",
-      "description": "Service running for 01:23:45",
-      "data": { "uptime_seconds": 5025, "memory_mb": 45.2 }
-    }
-  }
-}
-```
-
----
-
 ## SignalR - Notificaciones en Tiempo Real
 
 El servicio utiliza **SignalR** para enviar notificaciones en tiempo real sobre el estado de las ejecuciones ETL programadas. El hub se encuentra en `/etlNotifications`.
@@ -776,7 +864,7 @@ Los códigos configurados en `QueueConfig:ExcludedCodes` son excluidos de la eje
 
 ---
 
-## Monitoreo y Reinicio de Servicio
+## Monitoreo y Reinicio del Analyze
 
 El servicio [`ServiceRestartMonitorService`](Services/ServiceRestartMonitorService.cs) se ejecuta en segundo plano y realiza las siguientes tareas periódicamente:
 
@@ -902,74 +990,5 @@ dotnet test
 - `EtlJobService` y `CommandExecutor` son singletons que usan `IServiceScopeFactory` para acceso scoped a la base de datos
 - Los modelos `BaseDatos` y `DtxProcess` se ignoran con `modelBuilder.Ignore<T>()` y se consultan mediante SQL raw
 - Todos los comentarios y código fuente están en inglés, excepto este archivo de documentación
-
----
-
-## Resumen de Configuración al Inicio
-
-Al iniciar el servicio, se imprime un resumen de configuración en los logs que incluye los valores activos de:
-
-| Parámetro | Descripción |
-|-----------|-------------|
-| `QueueConfig:DailyCodes` | Códigos diarios permitidos |
-| `QueueConfig:ExcludedCodes` | Códigos excluidos de la cola |
-| `ServiceDb:Provider` | Proveedor de base de datos para ETL (PostgreSQL/SQL Server/SQLite) |
-| `Authentication:Provider` | Proveedor de base de datos para autenticación (PostgreSQL/SQL Server/SQLite) |
-| `Jwt:AccessTokenMinutes` | Duración del token de acceso |
-| `Jwt:RefreshTokenDays` | Duración del token de refresco |
-| `RefreshTokenCleanup:CleanupIntervalMinutes` | Intervalo de limpieza de tokens |
-| `RefreshTokenCleanup:AuditLogRetentionDays` | Retención de logs de auditoría |
-| `ServiceRestart:WindowsServiceName` | Nombre del servicio Windows a monitorear |
-| `ServiceRestart:CheckIntervalMinutes` | Intervalo de verificación del servicio |
-| `ServiceRestart:RunningMinutesThreshold` | Umbral de tiempo de ejecución para reinicio |
-| `QueueConfig:ProcessCheckWaitSeconds` | Tiempo de espera para verificación de proceso |
-
-El servicio también resuelve las direcciones IP accesibles cuando Kestrel está vinculado a `0.0.0.0`, mostrando todas las URLs disponibles en la red local.
-
----
-
-## Soporte Docker
-
-El proyecto incluye un [`Dockerfile`](Dockerfile) para construir una imagen del servicio y un [`docker-compose.yml`](docker-compose.yml) que orquesta el servicio junto con **Uptime Kuma** para monitoreo de salud.
-
-### Construir la imagen
-
-```bash
-docker build -t servicio-rest-ejecucion-comandos .
-```
-
-### Ejecutar con Docker Compose
-
-```bash
-docker-compose up -d
-```
-
-El archivo `docker-compose.yml` configura:
-- **Servicio principal:** Expone el puerto 5000 con las variables de entorno necesarias
-- **Uptime Kuma:** Monitor de salud con interfaz web en el puerto 3001, configurado para verificar el endpoint `/api/health` del servicio
-
-### Variables de entorno en Docker
-
-Las variables de entorno se pasan mediante la sección `environment` de `docker-compose.yml`, incluyendo:
-- `ASPNETCORE_ENVIRONMENT`
-- `ServiceDb__Provider` / `ServiceDb__ConnectionString`
-- `Authentication__Provider` / `Authentication__ConnectionString`
-- `Jwt__SecretKey`
-- `QueueConfig__ExePath`
-
----
-
-## Monitoreo de Salud
-
-Además del endpoint `/api/health`, el proyecto incluye [`Monitor-Health.ps1`](Monitor-Health.ps1), un script de PowerShell para verificar el estado del servicio de forma remota:
-
-```powershell
-.\Monitor-Health.ps1 -Url "http://localhost:5000/api/health"
-```
-
-El script verifica:
-- Conectividad HTTP al endpoint de salud
-- Estado de los componentes (base de datos, Hangfire, tiempo de actividad)
-- Respuesta JSON detallada con el estado de cada componente
 
 ---

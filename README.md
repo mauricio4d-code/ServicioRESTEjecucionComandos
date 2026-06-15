@@ -20,10 +20,24 @@ El sistema incluye autenticación JWT con tokens de acceso y refrescado (refresh
 ```
 ServicioRESTEjecucionComandos/
 ├── Program.cs                          # Punto de entrada y configuración de dependencias
+├── PublicProgram.cs                    # Hace Program público para WebApplicationFactory (integration tests)
 ├── ServicioRESTEjecucionComandos.csproj # Archivo de proyecto y paquetes NuGet
 ├── appsettings.json                    # Configuración base del servicio
 ├── appsettings.Development.json        # Configuración específica para ambiente Development
 ├── appsettings.Production.json         # Configuración específica para ambiente Production
+├── Constants/
+│   ├── AuditEventType.cs               # Constantes para tipos de eventos de auditoría
+│   ├── ControllerAction.cs             # Constantes para acciones de controlador (ACTUALIZAR, REPROCESAR)
+│   ├── DbProvider.cs                   # Constantes para identificadores de proveedor de BD
+│   ├── DtxProcess.cs                   # Constantes para tipos de proceso DTX
+│   ├── DtxProcessStatus.cs             # Constantes para estados de proceso DTX
+│   ├── EtlStatus.cs                    # Constantes para estados ETL (PENDIENTE, EN PROCESO, EXITOSO, FALLIDO)
+│   ├── Policy.cs                       # Constantes para nombres de políticas de autorización
+│   ├── Role.cs                         # Constantes para nombres de roles
+│   ├── Schedule.cs                     # Constantes para programación Hangfire
+│   ├── SignalREvent.cs                 # Constantes para nombres de eventos SignalR
+│   ├── TriggerType.cs                  # Constantes para tipos de disparador (MANUAL, REPROCESO)
+│   └── UserState.cs                    # Constantes para estados de usuario
 ├── Controllers/
 │   ├── AuthController.cs               # Endpoints de autenticación (login, refresh, logout)
 │   ├── ETLExecutorController.cs        # Endpoints REST para ETL, base-datos, y consultas
@@ -83,10 +97,16 @@ ServicioRESTEjecucionComandos/
 │   └── ServiceRestartMonitorService.cs # Monitorea procesos y reinicia Windows Service
 └── wwwroot/
     ├── auth.js                         # Cliente JavaScript para autenticación
+    ├── favicon.ico                     # Icono de pestaña del navegador
     ├── index.html                      # Interfaz web con selector de BD y tabla de resultados
     ├── login.html                      # Interfaz de inicio de sesión
     ├── scheduler.html                  # Interfaz web para gestionar programaciones ETL
-    └── scheduler.js                    # Cliente JavaScript para la interfaz de programaciones
+    ├── scheduler.js                    # Cliente JavaScript para la interfaz de programaciones
+    ├── images/
+    │   └── logo_datax_bolivia.svg      # Logo DataX Bolivia
+    └── styles/
+        ├── index.css                   # Estilos de la interfaz principal
+        └── scheduler.css               # Estilos de la interfaz de programaciones
 ```
 
 ---
@@ -121,7 +141,7 @@ Configura la base de datos de servicio donde se almacenan las tablas `hist_etl_e
 
 | Clave | Descripción | Valores Válidos |
 |-------|-------------|-----------------|
-| `Provider` | Proveedor de base de datos para ServiceDb | `postgres`, `sqlserver` |
+| `Provider` | Proveedor de base de datos para ServiceDb | `postgres`, `sqlserver`, `sqlite` |
 
 ### Authentication
 
@@ -349,38 +369,6 @@ dotnet publish ServicioRESTEjecucionComandos.csproj -c Release -r win-x64 --self
 | `-o ./publish` | Directorio de salida | `bin/Release/net8.0/win-x64/publish` |
 
 ---
-
-## Soporte Docker
-
-El proyecto incluye un [`Dockerfile`](Dockerfile) para construir una imagen del servicio y un [`docker-compose.yml`](docker-compose.yml) que orquesta el servicio junto con **Uptime Kuma** para monitoreo de salud.
-
-### Construir la imagen
-
-```bash
-docker build -t servicio-rest-ejecucion-comandos .
-```
-
-### Ejecutar con Docker Compose
-
-```bash
-docker-compose up -d
-```
-
-El archivo `docker-compose.yml` configura:
-- **Servicio principal:** Expone el puerto 5000 con las variables de entorno necesarias
-- **Uptime Kuma:** Monitor de salud con interfaz web en el puerto 3001, configurado para verificar el endpoint `/api/health` del servicio
-
-### Variables de entorno en Docker
-
-Las variables de entorno se pasan mediante la sección `environment` de `docker-compose.yml`, incluyendo:
-- `ASPNETCORE_ENVIRONMENT`
-- `ServiceDb__Provider` / `ServiceDb__ConnectionString`
-- `Authentication__Provider` / `Authentication__ConnectionString`
-- `Jwt__SecretKey`
-- `QueueConfig__ExePath`
-
----
-
 ## Monitoreo de Salud
 
 El servicio expone un endpoint de health checks en `/api/health` (sin autenticación) que reporta el estado de los siguientes componentes:
@@ -948,6 +936,7 @@ Cubren:
 - [`JwtServiceTests`](ServicioRESTEjecucionComandos.UnitTests/Services/JwtServiceTests.cs)
 - [`LegacyPasswordValidatorTests`](ServicioRESTEjecucionComandos.UnitTests/Services/LegacyPasswordValidatorTests.cs)
 - [`RefreshTokenServiceTests`](ServicioRESTEjecucionComandos.UnitTests/Services/RefreshTokenServiceTests.cs)
+- [`RefreshTokenCleanupServiceTests`](ServicioRESTEjecucionComandos.UnitTests/Services/RefreshTokenCleanupServiceTests.cs)
 - [`ETLExecutionHistoryRepositoryTests`](ServicioRESTEjecucionComandos.UnitTests/Repositories/ETLExecutionHistoryRepositoryTests.cs)
 - [`EtlScheduleRepositoryTests`](ServicioRESTEjecucionComandos.UnitTests/Repositories/EtlScheduleRepositoryTests.cs)
 
@@ -960,6 +949,7 @@ Cubren:
 - [`EtlExecutorControllerIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/EtlExecutorControllerIntegrationTests.cs)
 - [`SchedulesControllerIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/SchedulesControllerIntegrationTests.cs)
 - [`RateLimitingIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Controllers/RateLimitingIntegrationTests.cs)
+- [`EtlNotificationHubIntegrationTests`](ServicioRESTEjecucionComandos.IntegrationTests/Hubs/EtlNotificationHubIntegrationTests.cs)
 
 ### Ejecutar pruebas
 
@@ -990,5 +980,151 @@ dotnet test
 - `EtlJobService` y `CommandExecutor` son singletons que usan `IServiceScopeFactory` para acceso scoped a la base de datos
 - Los modelos `BaseDatos` y `DtxProcess` se ignoran con `modelBuilder.Ignore<T>()` y se consultan mediante SQL raw
 - Todos los comentarios y código fuente están en inglés, excepto este archivo de documentación
+
+---
+
+## Docker
+
+El servicio puede ejecutarse en contenedores Docker Windows Server Core:
+
+### Construir la imagen
+
+```bash
+docker build -t servicio-rest-ejecucion .
+```
+
+### Ejecutar con docker-compose
+
+El archivo [`docker-compose.yml`](docker-compose.yml) incluye:
+
+- **servicio-rest**: El servicio principal con health check integrado
+- **uptime-kuma**: Monitor de disponibilidad en `http://localhost:3001`
+
+```bash
+docker-compose up -d
+```
+
+### Health Check
+
+El Dockerfile incluye un health check nativo que verifica `/api/health` cada 30 segundos. Adicionalmente, [`Monitor-Health.ps1`](Monitor-Health.ps1) permite verificar la salud del servicio de forma remota:
+
+```powershell
+.\Monitor-Health.ps1 -Url http://localhost:5000/api/health
+```
+
+### Variables de entorno Docker
+
+| Variable | Descripción |
+|----------|-------------|
+| `ASPNETCORE_ENVIRONMENT` | Ambiente de ejecución (`Production`, `Development`) |
+| `ASPNETCORE_URLS` | URLs de escucha (por defecto `http://0.0.0.0:5000`) |
+| `ConnectionStrings__AuthDatabase` | Connection string para la base de datos legacy |
+| `ConnectionStrings__RefreshTokenDatabase` | Connection string para SQLite (tokens y auditoría) |
+| `ConnectionStrings__ServiceDatabase` | Connection string para la base de datos de servicio |
+| `DataxConfig__ExePath` | Ruta al ejecutable dentro del contenedor |
+
+---
+
+## Constantes del Sistema
+
+El proyecto centraliza valores mágicos en la carpeta [`Constants/`](Constants/) para mantener consistencia y facilitar el mantenimiento:
+
+### [`EtlStatus`](Constants/EtlStatus.cs)
+
+Estados posibles de una ejecución ETL:
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `Pending` | `PENDIENTE` | Esperando ejecución |
+| `InProgress` | `EN PROCESO` | En ejecución activa |
+| `Successful` | `EXITOSO` | Completada con éxito |
+| `Failed` | `FALLIDO` | Falló durante la ejecución |
+
+### [`DtxProcessStatus`](Constants/DtxProcessStatus.cs)
+
+Estados de los procesos DTX monitoreados:
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `Running` | `Running` | Proceso en ejecución |
+| `Stopped` | `Stopped` | Proceso detenido |
+| `Error` | `Error` | Proceso en estado de error |
+
+### [`TriggerType`](Constants/TriggerType.cs)
+
+Tipos de disparador para las ejecuciones:
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `Manual` | `MANUAL` | Ejecución iniciada manualmente |
+| `Reprocess` | `REPROCESO` | Re-procesamiento de ejecución previa |
+
+### [`UserState`](Constants/UserState.cs)
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `Active` | `Activo` | Usuario activo y habilitado para login |
+
+### [`Role`](Constants/Role.cs)
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `Administrator` | `Administrador` | Rol con acceso completo al sistema |
+
+### [`Policy`](Constants/Policy.cs)
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `AdminOnly` | `AdminOnly` | Política de autorización para administradores |
+| `LoginPolicy` | `LoginPolicy` | Política de rate limiting para el endpoint de login |
+
+### [`AuditEventType`](Constants/AuditEventType.cs)
+
+Tipos de eventos registrados en la auditoría de autenticación:
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `LoginSuccess` | `LoginSuccess` | Inicio de sesión exitoso |
+| `LoginFailed` | `LoginFailed` | Intento de inicio de sesión fallido |
+| `RefreshSuccess` | `RefreshSuccess` | Refresco de token exitoso |
+| `RefreshFailed` | `RefreshFailed` | Intento de refresco fallido |
+| `Logout` | `Logout` | Cierre de sesión |
+| `TokenRotated` | `TokenRotated` | Rotación de refresh token |
+| `TokenRevoked` | `TokenRevoked` | Revocación de refresh token |
+| `BulkTokenRevoked` | `BulkTokenRevoked` | Revocación masiva de tokens |
+
+### [`ControllerAction`](Constants/ControllerAction.cs)
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `Actualizar` | `ACTUALIZAR` | Acción para crear/actualizar ejecución ETL |
+| `Reprocesar` | `REPROCESAR` | Acción para re-procesar ejecución existente |
+
+### [`SignalREvent`](Constants/SignalREvent.cs)
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `TaskStarted` | `TaskStarted` | Evento SignalR al iniciar tarea programada |
+| `TaskCompleted` | `TaskCompleted` | Evento SignalR al completar tarea programada |
+
+### [`Schedule`](Constants/Schedule.cs)
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `JobIdPrefix` | `etl-schedule-` | Prefijo para IDs de jobs recurrentes en Hangfire |
+
+### [`DbProvider`](Constants/DbProvider.cs)
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `Sqlite` | `sqlite` | Proveedor SQLite |
+| `Postgres` | `postgres` | Proveedor PostgreSQL |
+| `Sqlserver` | `sqlserver` | Proveedor SQL Server |
+
+### [`DtxProcess`](Constants/DtxProcess.cs)
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `ProcessName` | `Datax.SAFI.Downloader` | Nombre del proceso DTX monitoreado |
 
 ---
